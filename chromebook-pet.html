@@ -14,7 +14,7 @@
       width: 100vw;
       height: 100vh;
       overflow: hidden;
-      background: linear-gradient(180deg, #161226 0%, #241d3d 72%, #233b2e 72%, #192b21 100%);
+      background: transparent;
       user-select: none;
     }
 
@@ -131,10 +131,23 @@
       background: rgba(255, 255, 255, 0.08);
     }
 
+    body.theme-meadow {
+      background: linear-gradient(180deg, #161226 0%, #241d3d 74%, #234230 74%, #182e21 100%);
+    }
+    body.theme-snow {
+      background: linear-gradient(180deg, #1b2842 0%, #314b70 74%, #dcebff 74%, #b8d4f2 100%);
+    }
+    body.theme-sakura {
+      background: linear-gradient(180deg, #2b192e 0%, #4a284f 74%, #4f3548 74%, #382233 100%);
+    }
+    body.theme-desk {
+      background: linear-gradient(180deg, #181c2b 0%, #252b40 74%, #5e3a24 74%, #422717 100%);
+    }
+
     #kid-toolbar {
       position: fixed;
-      top: 14px;
-      right: 14px;
+      top: 12px;
+      right: 12px;
       z-index: 9999;
       display: flex;
       flex-wrap: wrap;
@@ -142,34 +155,59 @@
       font-family: "JetBrainsMono Nerd Font", "Fira Code", sans-serif;
     }
     .kid-btn {
-      background: rgba(24, 19, 38, 0.9);
+      background: rgba(24, 19, 38, 0.92);
       color: #f5edff;
-      border: 1.5px solid rgba(255, 158, 68, 0.5);
+      border: 1.5px solid rgba(255, 158, 68, 0.55);
       border-radius: 999px;
-      padding: 6px 12px;
+      padding: 6px 11px;
       font-size: 12px;
       font-weight: 700;
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
       text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
     .kid-btn:hover {
-      background: rgba(50, 38, 77, 0.95);
+      background: rgba(50, 38, 77, 0.96);
       border-color: #ff9e44;
     }
+    .kid-btn.highlight {
+      background: linear-gradient(135deg, #ff7b29, #ff4d6d);
+      border-color: #ffe08a;
+      color: #ffffff;
+    }
     #companion-picker {
-      opacity: 0.95 !important;
+      opacity: 0.96 !important;
+      top: 12px;
+      left: 12px;
+    }
+    /* Compact mode when floating in Always-on-Top Picture-in-Picture window */
+    @media (max-height: 280px) {
+      #picker-btn, .kid-btn {
+        padding: 4px 8px;
+        font-size: 11px;
+      }
+      #companion-picker { top: 6px; left: 6px; }
+      #kid-toolbar { top: 6px; right: 6px; gap: 4px; }
+      #btn-pip, #btn-bookmarklet { display: none !important; }
+      #picker-menu {
+        max-height: calc(100vh - 48px);
+        overflow-y: auto;
+      }
     }
   </style>
 </head>
 <body>
   <div id="kid-toolbar">
-    <button class="kid-btn" id="btn-bf">🦋 Butterfly</button>
-    <button class="kid-btn" id="btn-ball">⚽ Ball</button>
-    <button class="kid-btn" id="btn-dance">🎵 Dance</button>
-    <button class="kid-btn" id="btn-bear">🐻 Bear Visit</button>
-    <button class="kid-btn" id="btn-pip" title="Float Always-on-Top on Chromebook!">📌 Float on Top</button>
-    <a class="kid-btn" href="./chromebook-extension.zip" download title="Download Chrome Extension to roam on all tabs!">🧩 Get Chrome Extension</a>
+    <button class="kid-btn" id="btn-bf" title="Chase a butterfly!">🦋<span>Butterfly</span></button>
+    <button class="kid-btn" id="btn-ball" title="Play with bouncy ball!">⚽<span>Ball</span></button>
+    <button class="kid-btn" id="btn-dance" title="Do a happy dance!">🎵<span>Dance</span></button>
+    <button class="kid-btn" id="btn-bear" title="Invite Bear friend to say hi!">🐻<span>Bear</span></button>
+    <button class="kid-btn" id="btn-theme" title="Change habitat background!">🎨<span>Theme</span></button>
+    <button class="kid-btn highlight" id="btn-pip" title="Pop out into a frameless Always-on-Top window on your Chromebook!">📌<span>Float Always-on-Top</span></button>
+    <a class="kid-btn" id="btn-bookmarklet" href="javascript:(function(){if(document.getElementById('foxden-pixel-fox'))return;var s=document.createElement('script');s.src='https://foxmagik.github.io/stream-companions/chrome-extension/content.js';document.body.appendChild(s);})();" title="Drag this button to your Bookmarks Bar, then click it on any website to summon your pet!">🔖<span>Drag to Bookmarks Bar</span></a>
   </div>
   <div id="companion-picker">
     <button id="picker-btn"></button>
@@ -217,9 +255,7 @@
       const SPEED_MULT = Math.max(0.2, Math.min(5.0, parseFloat(params.get("speed") || "1.0")));
       const SHOW_BUBBLES = params.get("bubbles") !== "0";
       const SHOW_PICKER = true;
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
-      }
+      if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js').catch(() => {}); }
       const EDGE_PAD = Math.max(0, parseInt(params.get("padding") || "16", 10));
       const CHROMA = (params.get("chroma") || "none").toLowerCase();
 
@@ -351,22 +387,36 @@
       });
       setSpecies(currentSpecies);
 
+      const THEMES = ["theme-meadow", "theme-snow", "theme-sakura", "theme-desk"];
+      let currentThemeIdx = parseInt(localStorage.getItem("pocket_pet_theme") || "0", 10) % THEMES.length;
+      document.body.className = THEMES[currentThemeIdx];
+
       document.getElementById("btn-bf").addEventListener("click", () => startButterflyChase());
       document.getElementById("btn-ball").addEventListener("click", () => startBallPlay());
       document.getElementById("btn-dance").addEventListener("click", () => startDance());
       document.getElementById("btn-bear").addEventListener("click", () => startBearVisit());
+      document.getElementById("btn-theme").addEventListener("click", () => {
+        currentThemeIdx = (currentThemeIdx + 1) % THEMES.length;
+        localStorage.setItem("pocket_pet_theme", String(currentThemeIdx));
+        document.body.className = THEMES[currentThemeIdx];
+      });
+      document.getElementById("btn-bookmarklet").addEventListener("click", (e) => {
+        e.preventDefault();
+        showFoxBubble("👆 Drag me to your Bookmarks Bar!", 2600);
+      });
+
       document.getElementById("btn-pip").addEventListener("click", async () => {
+        const pipUrl = "./chromebook-pet.html?scale=2&padding=8&pet=" + encodeURIComponent(currentSpecies);
         if ("documentPictureInPicture" in window) {
           try {
-            const pipWin = await window.documentPictureInPicture.requestWindow({ width: 420, height: 220 });
+            const pipWin = await window.documentPictureInPicture.requestWindow({ width: 430, height: 210 });
             const iframe = pipWin.document.createElement("iframe");
-            iframe.src = "./stream-fox.html?scale=2&pet=" + encodeURIComponent(currentSpecies);
+            iframe.src = pipUrl;
             Object.assign(iframe.style, {
               width: "100vw",
               height: "100vh",
               border: "none",
-              margin: "0",
-              background: "linear-gradient(180deg, #181429 0%, #241e3d 76%, #223b2d 76%, #182b20 100%)"
+              margin: "0"
             });
             pipWin.document.body.style.margin = "0";
             pipWin.document.body.style.overflow = "hidden";
@@ -376,7 +426,7 @@
             console.warn(err);
           }
         }
-        window.open("./chromebook-pet.html?pet=" + encodeURIComponent(currentSpecies), "PocketCompanion", "popup=yes,width=420,height=220");
+        window.open(pipUrl, "PocketCompanion", "popup=yes,width=430,height=210");
       });
 
       function bottomY() {
