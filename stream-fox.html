@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fox Stream Companion (OBS Browser Source)</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent;
+      user-select: none;
+    }
+
+    #fox-stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    #fox-actor {
+      position: absolute;
+      left: 120px;
+      top: 0px;
+      pointer-events: auto;
+      cursor: pointer;
+      filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
+      will-change: transform, left, top;
+    }
+
+    #fox-canvas {
+      display: block;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated;
+    }
+
+    #fox-bubble {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(-6px);
+      background: rgba(26, 20, 35, 0.92);
+      color: #ff9e44;
+      border: 1.5px solid rgba(255, 150, 54, 0.55);
+      border-radius: 10px;
+      padding: 3px 9px;
+      font-family: "JetBrainsMono Nerd Font", "Fira Code", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    #fox-bubble.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-8px);
+    }
+  </style>
+</head>
+<body>
+  <div id="fox-stage">
+    <div id="fox-actor">
+      <div id="fox-bubble"></div>
+      <canvas id="fox-canvas"></canvas>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+
+      // URL Parameters for OBS Browser Source customization:
+      // ?scale=3        -> Pixel multiplier (default: 3 = 144x108px, 2 = 96x72px, 4 = 192x144px)
+      // ?roam=bottom    -> "bottom" (default: walks along bottom edge), "full" (2D roam), "fixed" (stays in place)
+      // ?mode=auto      -> "auto" (default: walk/sit/sleep/pounce), "sleep" (always sleeping), "sit" (always sitting), "walk" (always walking)
+      // ?speed=1.0      -> Movement speed multiplier (default: 1.0)
+      // ?bubbles=1      -> 1 (show Zzz / Yip bubbles) or 0 (hide bubbles)
+      // ?padding=16     -> Bottom/edge padding in pixels (default: 16)
+      // ?chroma=none    -> "none" (transparent), "green" (#00ff00), "magenta" (#ff00ff)
+      const SCALE = Math.max(1, Math.min(8, parseInt(params.get("scale") || "3", 10)));
+      const ROAM = (params.get("roam") || "bottom").toLowerCase();
+      const LOCKED_MODE = (params.get("mode") || "auto").toLowerCase();
+      const SPEED_MULT = Math.max(0.2, Math.min(5.0, parseFloat(params.get("speed") || "1.0")));
+      const SHOW_BUBBLES = params.get("bubbles") !== "0";
+      const EDGE_PAD = Math.max(0, parseInt(params.get("padding") || "16", 10));
+      const CHROMA = (params.get("chroma") || "none").toLowerCase();
+
+      if (CHROMA === "green") {
+        document.body.style.background = "#00ff00";
+      } else if (CHROMA === "magenta") {
+        document.body.style.background = "#ff00ff";
+      }
+
+      const PALETTE = {
+        ".": null,
+        "K": "#23192d", // Soft dark plum-charcoal outline
+        "N": "#120c1c", // Deepest lash & glossy button nose
+        "D": "#422518", // Rich cocoa ear tips & tiny paw boots
+        "M": "#2b160e", // Far-side shaded paw boot
+        "S": "#cf4a19", // Warm burnt-orange shading
+        "O": "#ff6b24", // Bright cheerful tangerine-fox orange
+        "H": "#ff993b", // Golden-apricot highlight
+        "Y": "#ffd07b", // Soft sunny crown & brow dot highlight
+        "W": "#fff8eb", // Fluffy warm milk-white fur
+        "C": "#ebd9c5", // Soft biscuit shadow on white fur
+        "P": "#ff9ebb", // Sweet pastel pink inner ear
+        "R": "#ff7597", // Rosy kawaii cheek blush
+        "B": "#0e2f70", // Deep starry navy upper iris
+        "E": "#1f7ae0", // Vibrant sky-sapphire mid iris
+        "A": "#66ecff", // Glowing crystal-aqua lower iris
+        "G": "#ffffff"  // Pure white eye sparkle
+      };
+
+      const WALK_1 = [
+        ".................KK...........KK................",
+        "................KDDK.........KDDK...............",
+        "...............KDDDDK.......KDDDDK..............",
+        "...............KDDDDDK.....KDDDDDDK.............",
+        "..............KDDPPDDDK...KDDPPPDDK.............",
+        "..............KDDPPPPDOK.KDDPPPPDDK.............",
+        "....KKKKKK....KDPPPPPDOKKDPPPPPPDK..............",
+        "..KKWWWWWWKK..KDOOWWWOOOOOOWWWWODK..............",
+        ".KWWWWWWWWWWK.KDOOWWWWOHYYYYHOWWWOOOK...........",
+        "KWWWWWWWWWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........",
+        "KWWWWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK........",
+        "KWWWWWWWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK........",
+        "KWWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......",
+        "KWWWWWWWOHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......",
+        ".KWWWWWOHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......",
+        "..KWWWOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......",
+        "...KWOHHHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....",
+        "....KOOHHHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....",
+        ".....KOOOHHHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....",
+        "......KOOOHHHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......",
+        ".......KOOOHHHSSK...KKWWWWWWWWWWWWWWWWKK........",
+        "........KOOOHHSSK..KSSSSCCCCWWWWWWWWKK..........",
+        "........KOOOOHHSSKKSOOOOOOOOWWWWWWWWWWK.........",
+        ".........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWK........",
+        ".........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........",
+        "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........",
+        "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........",
+        "............KSSOOOOOOOOOOOOOWWWWWWWWK...........",
+        ".............KSSOOOOOOWWWWWWWWWWWWWK............",
+        ".............KDDK.KMMKKCCCCWWWWCCCK.............",
+        "............KDDDDKKMMK.KKKKDDK.KMMK.............",
+        "............KKKKK.KKKK....KDDDDKKKK.............",
+        "..........................KKKKK.................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const WALK_2 = [
+        ".................KK...........KK................",
+        "................KDDK.........KDDK...............",
+        "...............KDDDDK.......KDDDDK..............",
+        "...............KDDDDDK.....KDDDDDDK.............",
+        "..............KDDPPDDDK...KDDPPPDDK.............",
+        "....KKKKKK....KDDPPPPDOK.KDDPPPPDDK.............",
+        "..KKWWWWWWKK..KDPPPPPDOKKDPPPPPPDK..............",
+        ".KWWWWWWWWWWK.KDOOWWWOOOOOOWWWWODK..............",
+        "KWWWWWWWWWWWWKKDOOWWWWOHYYYYHOWWWOOOK...........",
+        "KWWWWWWWWWWWOHKDOOOOOOOHYYYYYYHOOOOOOK..........",
+        "KWWWWWWWWWWOHHSKOOOOOOOHHHHHHHHHYYHOOOOK........",
+        "KWWWWWWWWWOHHHSSKOOOOOHHHHHHHNNNNNNHOOOK........",
+        ".KWWWWWWOHHHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......",
+        "..KWWWWOHHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......",
+        "...KWWOHHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......",
+        "....KOOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......",
+        ".....KOOOHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....",
+        "......KOOOHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....",
+        ".......KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....",
+        "........KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......",
+        "........KOOOOHHSK...KKWWWWWWWWWWWWWWWWKK........",
+        ".........KOOOOHSK..KSSSSCCCCWWWWWWWWKK..........",
+        ".........KOOOOOOKKKSOOOOOOOOWWWWWWWWWWK.........",
+        ".........KOOOOOHHHHHOOOOOOOOWWWWWWWWWWWK........",
+        "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........",
+        "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........",
+        "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........",
+        "............KSSOOOOOOOOOOOOOWWWWWWWWK...........",
+        ".............KSSOOOOOOWWWWWWWWWWWWWK............",
+        "..............KDDKKMMKKCCCCWWWWCCCK.............",
+        "..............KDDDKMMK.KKKKDDK.KMMK.............",
+        "..............KKKKKKKK....KDDDKKKK..............",
+        "..........................KKKK..................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const WALK_3 = [
+        ".................KK...........KK................",
+        "................KDDK.........KDDK...............",
+        "...............KDDDDK.......KDDDDK..............",
+        "...............KDDDDDK.....KDDDDDDK.............",
+        "..............KDDPPDDDK...KDDPPPDDK.............",
+        "..............KDDPPPPDOK.KDDPPPPDDK.............",
+        "....KKKKKK....KDPPPPPDOKKDPPPPPPDK..............",
+        "..KKWWWWWWKK..KDOOWWWOOOOOOWWWWODK..............",
+        ".KWWWWWWWWWWK.KDOOWWWWOHYYYYHOWWWOOOK...........",
+        "KWWWWWWWWWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........",
+        "KWWWWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK........",
+        "KWWWWWWWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK........",
+        "KWWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......",
+        ".KWWWWWWOHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......",
+        "..KWWWWOHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......",
+        "...KWWOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......",
+        "....KOOHHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....",
+        ".....KOOOHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....",
+        "......KOOOHHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....",
+        ".......KOOOHHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......",
+        "........KOOOHHSSK...KKWWWWWWWWWWWWWWWWKK........",
+        "........KOOOOHHSK..KSSSSCCCCWWWWWWWWKK..........",
+        ".........KOOOOHSSKKSOOOOOOOOWWWWWWWWWWK.........",
+        ".........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWK........",
+        ".........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........",
+        "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........",
+        "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........",
+        "............KSSOOOOOOOOOOOOOWWWWWWWWK...........",
+        ".............KSSOOOOOOWWWWWWWWWWWWWK............",
+        ".............KMMK.KDDKKCCCCWWWWCCCK.............",
+        "............KMMMK.KDDDKKKKKMMK.KDDK.............",
+        "............KKKK..KKKKK...KMMMKKKKDK............",
+        "..........................KKKK.KKKK.............",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const SIT_1 = [
+        "...............KK...........KK..................",
+        "..............KDDK.........KDDK.................",
+        ".............KDDDDK.......KDDDDK................",
+        ".............KDDDDDK.....KDDDDDDK...............",
+        "............KDDPPDDDK...KDDPPPDDK...............",
+        "............KDDPPPPDOK.KDDPPPPDDK...............",
+        "............KDPPPPPDOKKDPPPPPPDK................",
+        "............KDOOWWWOOOOOOWWWWODK................",
+        "............KDOOWWWWOHYYYYHOWWWOOOK.............",
+        "...KKKKKK..KDOOOOOOOHYYYYYYHOOOOOOK.............",
+        ".KKWWWWWWK.KOOOOOOOOHHHHHHHHHYYHOOOOK...........",
+        "KWWWWWWWWWKOOOOOOOOHHHHHHHNNNNNNHOOOK...........",
+        "KWWWWWWWWOHKOOOOOOHHHHHHHNNGGGBBNHOOOK..........",
+        "KWWWWWWWOHHSKOOOOOHHHHHHHNNGGGBBNHOOOK..........",
+        "KWWWWWWOHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK..........",
+        ".KWWWWOHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK..........",
+        "..KWWOHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK........",
+        "...KOOHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK........",
+        "....KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK........",
+        ".....KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK..........",
+        "......KOOOHSSK...KKWWWWWWWWWWWWWWWWKK...........",
+        ".......KOOOHSSK..KSSSSCCCCWWWWWWWWKK............",
+        "........KOOOHSSKKSOOOOOOOOWWWWWWWWWWK...........",
+        ".........KOOOHSSKSOOOOOHHOWWWWWWWWWWWK..........",
+        "..........KOOOHSSSOOOOOHHOWWWWWWWWWWWK..........",
+        "...........KSSSOOOOOOOOOOOWWWWWWWWWWK...........",
+        "............KKKKSSOOOOOOOOWWWWWWWWWK............",
+        "................KKDDDDKKKKKDDDDDDK..............",
+        ".................KDDDDDK..KDDDDDDK..............",
+        ".................KKKKKK...KKKKKKKK..............",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const SIT_2 = [
+        "...............KK...........KK..................",
+        "..............KDDK.........KDDK.................",
+        ".............KDDDDK.......KDDDDK................",
+        ".............KDDDDDK.....KDDDDDDK...............",
+        "............KDDPPDDDK...KDDPPPDDK...............",
+        "............KDDPPPPDOK.KDDPPPPDDK...............",
+        "............KDPPPPPDOKKDPPPPPPDK................",
+        "...KKKKKK...KDOOWWWOOOOOOWWWWODK................",
+        ".KKWWWWWWK..KDOOWWWWOHYYYYHOWWWOOOK.............",
+        "KWWWWWWWWWK.KDOOOOOOOHYYYYYYHOOOOOOK............",
+        "KWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK...........",
+        "KWWWWWWWOHHSKOOOOOOHHHHHHHSSSSSSHOOOK...........",
+        "KWWWWWWOHHHSSKOOOOOHHHHHHOOOOOOOHOOOK...........",
+        ".KWWWWOHHHHSSKOOOOHHHHHHHNNNNNNNHOOOK...........",
+        "..KWWOHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK..........",
+        "...KOOHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK..........",
+        "....KOOOHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK........",
+        ".....KOOOHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK........",
+        "......KOOOHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK........",
+        ".......KOOOHSK..KWWWWWWWWWWWWWWWWWWWWK..........",
+        "........KOOOHSK..KKWWWWWWWWWWWWWWWWKK...........",
+        ".........KOOOOK..KSSSSCCCCWWWWWWWWKK............",
+        ".........KOOOOOKKSOOOOOOOOWWWWWWWWWWK...........",
+        "..........KOOOOOKSOOOOOHHOWWWWWWWWWWWK..........",
+        "...........KSSSSKSOOOOOHHOWWWWWWWWWWWK..........",
+        "............KKKKKSOOOOOOOOWWWWWWWWWWK...........",
+        "................KSSOOOOOOOWWWWWWWWWK............",
+        "................KKDDDDKKKKKDDDDDDK..............",
+        ".................KDDDDDK..KDDDDDDK..............",
+        ".................KKKKKK...KKKKKKKK..............",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const SLEEP_1 = [
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        ".................KK...........KK................",
+        "................KDDK.........KDDK...............",
+        "...............KDDDDK.......KDDDDK..............",
+        ".......KKKKKK..KDDDDDK.....KDDDDDDK.............",
+        ".....KKOOOOOOKKDDPPDDDK...KDDPPPDDK.............",
+        "....KOOOOOOOOOKDDPPPPDOK.KDDPPPPDDK.............",
+        "...KOOOOOHHHHHOKDPPPPPDOKKDPPPPPPDK.............",
+        "..KOOOOOHHHHHHHOKDOOWWWOOOOOOWWWWODK............",
+        ".KOOOOOHHHHHHHHHHDOOWWWWOHYYYYHOWWWOOOK.........",
+        ".KOOOOOHHHHHHHHHHHHOOOOOOHYYYYYYHOOOOOOK........",
+        "KSOOOOOHHHHHHHHHHHHHHHHHHHSSSSSSHOOOOOOK.KKKK...",
+        ".KSOOOOOHHHHHHHSSSSOOOOOHNNNNNNHHOOOOONNKKWWWK..",
+        "..KSOOOOOOHHHSSSSSSOOOWWHHHHHHHHWWWWWWNNKWWWWWK.",
+        "..KSSOOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKWWWWWWWK",
+        "...KSSOOOOOHSKKOOOOOKKWWWWWWRRRWWWWWWKKWWWWWWWWK",
+        "...KSSSOOOOOHKOOOOOOOOKKKKKCCCCCCKKKKKWWWWWWWWWK",
+        "....KSSSSOOOOKOOOOOHHHHHHHHOOOOOOHHWWWWWWWWWWWWK",
+        ".....KKKSSSSOOOHHHHHHHHHHHHHHHHHHHOWWWWWWWWWWWWK",
+        "........KKKSSSSOOOOOOHHHHHHHHHHHOWWWWWWWWWWWWWK.",
+        "...........KKKSSSSOOOOOOOOOOOOOHWWWWWWWWWWWWWK..",
+        "..............KKKKSSSSOOOOOOOOOWWWWWWWWWWWWWK...",
+        "..................KKKKKKCCCCCCCWWWWWWWWWWWKK....",
+        "........................KKKKKKKKKKKKKKKKKK......",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const SLEEP_2 = [
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        ".................KK...........KK................",
+        "................KDDK.........KDDK...............",
+        "...............KDDDDK.......KDDDDK..............",
+        ".......KKKKKK..KDDDDDK.....KDDDDDDK.............",
+        ".....KKOOOOOOKKDDPPDDDK...KDDPPPDDK.............",
+        "....KOOOOOOOOOKDDPPPPDOK.KDDPPPPDDK.............",
+        "...KOOOOOHHHHHOKDPPPPPDOKKDPPPPPPDK.............",
+        "..KOOOOOHHHHHHHOKDOOWWWOOOOOOWWWWODK............",
+        ".KOOOOOHHHHHHHHHHDOOWWWWOHYYYYHOWWWOOOK..KKKK...",
+        "KSOOOOOHHHHHHHHHHHHOOOOOOHYYYYYYHOOOOOOKKWWWWK..",
+        ".KSOOOOOHHHHHHHHHHHHHHHHHHSSSSSSHOOOOOOKWWWWWWK.",
+        "..KSOOOOOHHHHHHSSSSOOOOOHNNNNNNHHOOOOONNKWWWWWWK",
+        "..KSSOOOOOOHHSSSSSSOOOWWHHHHHHHHWWWWWWNNKWWWWWWK",
+        "...KSSOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKWWWWWWWK",
+        "...KSSSOOOOOHSKKOOOOKKWWWWWWRRRWWWWWWKKWWWWWWWWK",
+        "....KSSSSOOOOHKOOOOOOOKKKKKCCCCCCKKKKKWWWWWWWWWK",
+        ".....KKKSSSSOOOKOOOOHHHHHHHHOOOOOHHWWWWWWWWWWWK.",
+        "........KKKSSSSOOHHHHHHHHHHHHHHHHOWWWWWWWWWWWWK.",
+        "...........KKKSSSSOOOOOHHHHHHHHHOWWWWWWWWWWWWK..",
+        "..............KKKKSSSSOOOOOOOOOOWWWWWWWWWWWWK...",
+        "..................KKKKKKCCCCCCCWWWWWWWWWWWKK....",
+        "........................KKKKKKKKKKKKKKKKKK......",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const JUMP_1 = [
+        "...................KK...........KK..............",
+        "..................KDDK.........KDDK.............",
+        ".................KDDDDK.......KDDDDK............",
+        "....KKKKKK.......KDDDDDK.....KDDDDDDK...........",
+        "..KKWWWWWWKK....KDDPPDDDK...KDDPPPDDK...........",
+        ".KWWWWWWWWWWK...KDDPPPPDOK.KDDPPPPDDK...........",
+        "KWWWWWWWWWWWWK..KDPPPPPDOKKDPPPPPPDK............",
+        "KWWWWWWWWWWWOHK.KDOOWWWOOOOOOWWWWODK............",
+        "KWWWWWWWWWWOHHSKKDOOWWWWOHYYYYHOWWWOOOK.........",
+        ".KWWWWWWWWOHHHSSKDOOOOOOOHYYYYYYHOOOOOOK........",
+        "..KWWWWWWOHHHHSSKOOOOOOOOHHHHHHHHHYYHOOOOK......",
+        "...KWWWWOHHHHHSSKOOOOOOHHHHHHHNNNNNNHOOOK.......",
+        "....KWWOHHHHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......",
+        ".....KOOHHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......",
+        "......KOOOHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......",
+        ".......KOOOHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......",
+        "........KOOOHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....",
+        ".........KOOOHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....",
+        "..........KOOOOHSK.KWWWWWWRRRWWAAAAWWWWWWWKK....",
+        "..........KOOOOOOK..KWWWWWWWWWWWWWWWWWWWWK......",
+        "..........KOOOOOOOK..KKWWWWWWWWWWWWWWWWKK.......",
+        "..........KOOOOOOOOK.KSSSSCCCCWWWWWWWWKK........",
+        "...........KOOOOOOOOKKSOOOOOOOOWWWWWWWWWWK......",
+        "...........KOOOOOOOOOHHHHHHOOOOWWWWWWWWWWWK.....",
+        "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK.....",
+        ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWK......",
+        "..............KSSOOOOOOOOOOOOOWWWWWWWWWWK.......",
+        ".............KDDKSSOOOOOOWWWWWWWWWWWWWK.........",
+        "............KDDDDK.KKKKKCCCCWWWWCCCKDDK.........",
+        "...........KDDDDDK......KKKKKKKKK..KDDDDK.......",
+        "...........KKKKKK...................KKKKK.......",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const SPRITE_W = 48;
+      const SPRITE_H = 36;
+      const WIDTH = SPRITE_W * SCALE;
+      const HEIGHT = SPRITE_H * SCALE;
+
+      const actor = document.getElementById("fox-actor");
+      const canvas = document.getElementById("fox-canvas");
+      const bubble = document.getElementById("fox-bubble");
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = WIDTH;
+      canvas.height = HEIGHT;
+      actor.style.width = WIDTH + "px";
+      actor.style.height = HEIGHT + "px";
+
+      function bottomY() {
+        return Math.max(EDGE_PAD, window.innerHeight - HEIGHT - EDGE_PAD);
+      }
+
+      let x = ROAM === "fixed" ? Math.round((window.innerWidth - WIDTH) / 2) : 120;
+      let y = bottomY();
+      let targetX = Math.min(window.innerWidth - WIDTH - EDGE_PAD, 520);
+      let targetY = y;
+      let facingRight = true;
+      let mode = LOCKED_MODE === "auto" ? "walk" : LOCKED_MODE;
+      let modeTimer = 220;
+      let frameTick = 0;
+      let jumpY = 0;
+      let jumpVy = 0;
+      let bubbleTimer = null;
+
+      function showBubble(text, ms = 1600) {
+        if (!SHOW_BUBBLES) return;
+        bubble.textContent = text;
+        bubble.classList.add("visible");
+        if (bubbleTimer) clearTimeout(bubbleTimer);
+        bubbleTimer = setTimeout(() => {
+          bubble.classList.remove("visible");
+        }, ms);
+      }
+
+      function pickDestination() {
+        const minX = EDGE_PAD;
+        const maxX = Math.max(minX + 20, window.innerWidth - WIDTH - EDGE_PAD);
+        targetX = minX + Math.random() * (maxX - minX);
+        if (ROAM === "full") {
+          const minY = EDGE_PAD + 30;
+          const maxY = bottomY();
+          targetY = Math.random() < 0.45 ? maxY : minY + Math.random() * Math.max(10, maxY - minY);
+        } else {
+          targetY = bottomY();
+        }
+      }
+
+      function drawSprite(grid, flipX) {
+        ctx.clearRect(0, 0, WIDTH, HEIGHT);
+        for (let r = 0; r < SPRITE_H; r++) {
+          const row = grid[r];
+          for (let c = 0; c < SPRITE_W; c++) {
+            const ch = row[c];
+            const color = PALETTE[ch];
+            if (!color) continue;
+            const drawC = flipX ? (SPRITE_W - 1 - c) : c;
+            ctx.fillStyle = color;
+            ctx.fillRect(drawC * SCALE, r * SCALE, SCALE, SCALE);
+          }
+        }
+      }
+
+      window.addEventListener("resize", () => {
+        if (ROAM !== "full") {
+          y = bottomY();
+          targetY = y;
+        }
+        if (ROAM === "fixed") {
+          x = Math.round((window.innerWidth - WIDTH) / 2);
+        }
+      });
+
+      // Interactive click support (works in OBS "Interact" window too!)
+      actor.addEventListener("click", () => {
+        if (LOCKED_MODE !== "auto") return;
+        mode = "jump";
+        jumpVy = -9.0;
+        modeTimer = 180;
+        pickDestination();
+        const quips = ["♥ Yip!", "★ Boing!", "♥ *wag*", "⚡ Zoom!"];
+        showBubble(quips[Math.floor(Math.random() * quips.length)]);
+      });
+
+      actor.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        if (mode === "sleep") {
+          mode = "walk";
+          modeTimer = 200;
+          pickDestination();
+          showBubble("! Awake!");
+        } else {
+          mode = "sleep";
+          modeTimer = 420;
+          showBubble("Zzz...", 2400);
+        }
+      });
+
+      function step() {
+        frameTick++;
+
+        if (jumpY < 0 || jumpVy < 0) {
+          jumpY += jumpVy;
+          jumpVy += 0.85;
+          if (jumpY >= 0) {
+            jumpY = 0;
+            jumpVy = 0;
+            if (mode === "jump") mode = LOCKED_MODE === "auto" ? "walk" : LOCKED_MODE;
+          }
+        }
+
+        if (LOCKED_MODE !== "auto") {
+          mode = LOCKED_MODE;
+        }
+
+        if (ROAM === "fixed" && (mode === "walk" || mode === "jump")) {
+          mode = "sit";
+        }
+
+        if (mode === "walk" || mode === "jump") {
+          modeTimer--;
+          const dx = targetX - x;
+          const dy = targetY - y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < 6 || modeTimer <= 0) {
+            if (LOCKED_MODE === "walk") {
+              modeTimer = 240;
+              pickDestination();
+            } else {
+              mode = Math.random() < 0.32 ? "sleep" : "sit";
+              modeTimer = mode === "sleep" ? 280 + Math.random() * 220 : 120 + Math.random() * 140;
+              if (mode === "sleep") showBubble("Zzz...", 2200);
+            }
+          } else {
+            const baseSpeed = (mode === "jump" ? 3.5 : 1.45) * SPEED_MULT;
+            const vx = (dx / dist) * baseSpeed;
+            const vy = (dy / dist) * (baseSpeed * 0.65);
+            x += vx;
+            y += vy;
+            if (Math.abs(vx) > 0.08) facingRight = vx > 0;
+          }
+        } else if (mode === "sit") {
+          if (LOCKED_MODE === "auto") {
+            modeTimer--;
+            if (modeTimer <= 0) {
+              if (Math.random() < 0.28) {
+                mode = "sleep";
+                modeTimer = 320 + Math.random() * 180;
+                showBubble("Zzz...", 2200);
+              } else if (ROAM !== "fixed") {
+                mode = "walk";
+                modeTimer = 240;
+                pickDestination();
+              } else {
+                modeTimer = 200;
+              }
+            }
+          }
+        } else if (mode === "sleep") {
+          if (frameTick % 140 === 0) showBubble("zZz...", 1600);
+          if (LOCKED_MODE === "auto") {
+            modeTimer--;
+            if (modeTimer <= 0) {
+              mode = ROAM === "fixed" ? "sit" : "walk";
+              modeTimer = 220;
+              pickDestination();
+            }
+          }
+        }
+
+        let sprite = SIT_1;
+        if (jumpY < -1) {
+          sprite = JUMP_1;
+        } else if (mode === "walk") {
+          const cycle = Math.floor(frameTick / 7) % 4;
+          sprite = [WALK_1, WALK_2, WALK_3, WALK_2][cycle];
+        } else if (mode === "sit") {
+          const wag = Math.floor(frameTick / 24) % 2 === 0;
+          sprite = wag ? SIT_1 : SIT_2;
+        } else if (mode === "sleep") {
+          const breathe = Math.floor(frameTick / 55) % 2 === 0;
+          sprite = breathe ? SLEEP_1 : SLEEP_2;
+        }
+
+        drawSprite(sprite, !facingRight);
+        actor.style.left = Math.round(x) + "px";
+        actor.style.top = Math.round(y + jumpY) + "px";
+
+        requestAnimationFrame(step);
+      }
+
+      requestAnimationFrame(step);
+    })();
+  </script>
+</body>
+</html>
