@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fox & Bear Stream Companions (OBS Browser Source)</title>
+  <title>Stream Companions — Foxes, Cats, Chillet & Bear Friend (OBS Browser Source)</title>
   <style>
     html, body {
       margin: 0;
@@ -69,9 +69,72 @@
       opacity: 1;
       transform: translateX(-50%) translateY(-8px);
     }
+
+    /* Companion Selector UI */
+    #companion-picker {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      z-index: 9999;
+      font-family: "JetBrainsMono Nerd Font", "Fira Code", monospace;
+      pointer-events: auto;
+      opacity: 0.35;
+      transition: opacity 0.2s ease;
+    }
+    #companion-picker:hover, #companion-picker.open {
+      opacity: 1;
+    }
+    #picker-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(22, 17, 34, 0.92);
+      color: #f5edff;
+      border: 1.5px solid rgba(255, 158, 68, 0.55);
+      border-radius: 999px;
+      padding: 6px 13px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+    }
+    #picker-menu {
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 8px;
+      padding: 8px;
+      background: rgba(22, 17, 34, 0.96);
+      border: 1.5px solid rgba(255, 158, 68, 0.55);
+      border-radius: 12px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    }
+    #companion-picker.open #picker-menu {
+      display: flex;
+    }
+    .picker-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      color: #f3ecff;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .picker-item:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
   </style>
 </head>
 <body>
+  <div id="companion-picker">
+    <button id="picker-btn"></button>
+    <div id="picker-menu"></div>
+  </div>
+
   <div id="fox-stage">
     <div id="butterfly-actor" class="companion-actor" style="display: none; pointer-events: none;">
       <canvas id="butterfly-canvas" class="companion-canvas"></canvas>
@@ -94,15 +157,17 @@
       const params = new URLSearchParams(window.location.search);
 
       // URL Parameters for OBS Browser Source customization:
-      // ?scale=3          -> Pixel multiplier (default: 3 = 144x108px, 2 = 96x72px, 4 = 192x144px)
-      // ?roam=bottom      -> "bottom" (default: walks along bottom edge), "full" (2D roam), "fixed" (stays in place)
-      // ?mode=auto        -> "auto" (default: walk/sit/sleep/pounce), "sleep" (always sleeping), "sit" (always sitting), "walk"
-      // ?bear=1           -> "1" (default: bear pops up periodically to say hi), "0" (no bear), "always" (bear stays on screen)
+      // ?pet=fox          -> "fox", "fennec", "arctic", "white_cat", "orange_cat", "grey_cat", "chillet"
+      // ?picker=1         -> 1 (default: show collapsible companion selector) or 0 (hide selector in OBS)
+      // ?scale=3          -> Pixel multiplier (default: 3 = 144x108px)
+      // ?roam=bottom      -> "bottom" (default), "full" (2D roam), "fixed" (stays in place)
+      // ?mode=auto        -> "auto", "sleep", "sit", "walk", "dance", "butterfly", "ball"
+      // ?bear=1           -> "1" (periodic bear visits), "0" (no bear), "always"
       // ?bear_interval=45 -> Average seconds between bear visits (default: 45)
-      // ?speed=1.0        -> Movement speed multiplier (default: 1.0)
-      // ?bubbles=1        -> 1 (show Zzz / Yip / Hewwo bubbles) or 0 (hide bubbles)
-      // ?padding=16       -> Bottom/edge padding in pixels (default: 16)
-      // ?chroma=none      -> "none" (transparent), "green" (#00ff00), "magenta" (#ff00ff)
+      // ?speed=1.0        -> Movement speed multiplier
+      // ?bubbles=1        -> 1 (show bubbles) or 0 (hide bubbles)
+      // ?padding=16       -> Edge padding in pixels
+      // ?chroma=none      -> "none" (transparent), "green", "magenta"
       const SCALE = Math.max(1, Math.min(8, parseInt(params.get("scale") || "3", 10)));
       const ROAM = (params.get("roam") || "bottom").toLowerCase();
       const LOCKED_MODE = (params.get("mode") || "auto").toLowerCase();
@@ -110,715 +175,33 @@
       const BEAR_INTERVAL_SEC = Math.max(8, parseInt(params.get("bear_interval") || "45", 10));
       const SPEED_MULT = Math.max(0.2, Math.min(5.0, parseFloat(params.get("speed") || "1.0")));
       const SHOW_BUBBLES = params.get("bubbles") !== "0";
+      const SHOW_PICKER = params.get("picker") !== "0";
       const EDGE_PAD = Math.max(0, parseInt(params.get("padding") || "16", 10));
       const CHROMA = (params.get("chroma") || "none").toLowerCase();
 
-      if (CHROMA === "green") {
-        document.body.style.background = "#00ff00";
-      } else if (CHROMA === "magenta") {
-        document.body.style.background = "#ff00ff";
+      if (CHROMA === "green") document.body.style.background = "#00ff00";
+      else if (CHROMA === "magenta") document.body.style.background = "#ff00ff";
+
+      const SPECIES_META = [{"id": "fox", "name": "Red Fox", "icon": "\ud83e\udd8a", "geom": "fox", "bubbleColor": "#ff9e44"}, {"id": "fennec", "name": "Fennec Fox", "icon": "\ud83c\udfdc\ufe0f", "geom": "fennec", "bubbleColor": "#ffd9a6"}, {"id": "arctic", "name": "Arctic Fox", "icon": "\u2744\ufe0f", "geom": "fox", "bubbleColor": "#9ee0ff"}, {"id": "white_cat", "name": "White Cat", "icon": "\ud83d\udc31", "geom": "cat", "bubbleColor": "#f0f7ff"}, {"id": "orange_cat", "name": "Orange Tabby", "icon": "\ud83d\udc08", "geom": "cat", "bubbleColor": "#ffb35c"}, {"id": "grey_cat", "name": "Grey Cat", "icon": "\ud83d\udc3e", "geom": "cat", "bubbleColor": "#bac6d9"}, {"id": "chillet", "name": "Chillet", "icon": "\ud83d\udc09", "geom": "chillet", "bubbleColor": "#73c7ff"}];
+      const PALETTES = {"fox": {"K": "#23192d", "N": "#120c1c", "D": "#422518", "M": "#2b160e", "S": "#cf4a19", "O": "#ff6b24", "H": "#ff993b", "Y": "#ffd07b", "W": "#fff8eb", "C": "#ebd9c5", "P": "#ff9ebb", "R": "#ff7597", "B": "#0e2f70", "E": "#1f7ae0", "A": "#66ecff", "G": "#ffffff", "T": "#cf4a19", "V": "#c77dff", "Z": "#ff4d6d"}, "fennec": {"K": "#2a1d17", "N": "#170e0a", "D": "#734222", "M": "#4f2c15", "S": "#d49557", "O": "#f5be7d", "H": "#ffd9a6", "Y": "#fff0d4", "W": "#fffaf0", "C": "#eddcc4", "P": "#ff9ebb", "R": "#ff7597", "B": "#0e2f70", "E": "#1f7ae0", "A": "#66ecff", "G": "#ffffff", "T": "#734222", "V": "#c77dff", "Z": "#ff4d6d"}, "arctic": {"K": "#23293d", "N": "#121624", "D": "#5c7094", "M": "#415270", "S": "#a9c2e6", "O": "#dcebff", "H": "#f0f7ff", "Y": "#ffffff", "W": "#ffffff", "C": "#d9e6f7", "P": "#ff9ebb", "R": "#ff85a8", "B": "#0e2f70", "E": "#2488ff", "A": "#7af0ff", "G": "#ffffff", "T": "#a9c2e6", "V": "#c77dff", "Z": "#ff4d6d"}, "white_cat": {"K": "#282338", "N": "#171224", "D": "#ffffff", "M": "#d7deed", "S": "#cad5eb", "O": "#eef4ff", "H": "#f7faff", "Y": "#ffffff", "W": "#ffffff", "C": "#dce4f5", "P": "#ff9ebb", "R": "#ff7597", "B": "#0e2f70", "E": "#1f7ae0", "A": "#66ecff", "G": "#ffffff", "T": "#dce4f5", "V": "#c77dff", "Z": "#ff4d6d"}, "orange_cat": {"K": "#281b12", "N": "#1a100a", "D": "#fff8eb", "M": "#ebd9c5", "S": "#d95b16", "O": "#ff8524", "H": "#ffa845", "Y": "#ffd480", "W": "#fff8eb", "C": "#ebd9c5", "P": "#ff9ebb", "R": "#ff7597", "B": "#0a4f3c", "E": "#199e72", "A": "#57f2be", "G": "#ffffff", "T": "#b3390c", "V": "#c77dff", "Z": "#ff4d6d"}, "grey_cat": {"K": "#1c202b", "N": "#11141c", "D": "#f0f4fa", "M": "#c5cedb", "S": "#5d687a", "O": "#7e8b9e", "H": "#9aa7ba", "Y": "#bac6d9", "W": "#f0f4fa", "C": "#cfd7e6", "P": "#ff9ebb", "R": "#ff7597", "B": "#13476e", "E": "#2089b8", "A": "#6bf2e6", "G": "#ffffff", "T": "#3f4756", "V": "#c77dff", "Z": "#ff4d6d"}, "chillet": {"K": "#1b2238", "N": "#12182b", "D": "#243b7a", "M": "#1a2b5c", "S": "#499cd6", "O": "#73c7ff", "H": "#9ee0ff", "Y": "#cbf0ff", "W": "#fff9f2", "C": "#e0d8cf", "P": "#3654a3", "R": "#ff6b98", "B": "#182454", "E": "#3256b8", "A": "#73b0ff", "G": "#ffffff", "T": "#243b7a", "V": "#c77dff", "Z": "#ff4d6d"}};
+      const GEOMS = {"fox": {"walk1": [".................KK...........KK................", "................KDDK.........KDDK...............", "...............KDDDDK.......KDDDDK..............", "...............KDDDDDK.....KDDDDDDK.............", "..............KDDPPDDDK...KDDPPPDDK.............", "..............KDDPPPPDOK.KDDPPPPDDK.............", "....KKKKKK....KDPPPPPDOKKDPPPPPPDK..............", "..KKWWWWWWKK..KDOOWWWOOOOOOWWWWODK..............", ".KWWWWWWWWWWK.KDOOWWWWOHYYYYHOWWWOOOK...........", "KWWWWWWWWWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........", "KWWWWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK........", "KWWWWWWWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK........", "KWWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......", "KWWWWWWWOHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......", ".KWWWWWOHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......", "..KWWWOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......", "...KWOHHHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....", "....KOOHHHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....", ".....KOOOHHHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....", "......KOOOHHHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......", ".......KOOOHHHSSK...KKWWWWWWWWWWWWWWWWKK........", "........KOOOHHSSK..KSSSSCCCCWWWWWWWWKK..........", "........KOOOOHHSSKKSOOOOOOOOWWWWWWWWWWK.........", ".........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWK........", ".........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........", "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........", "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........", "............KSSOOOOOOOOOOOOOWWWWWWWWK...........", ".............KSSOOOOOOWWWWWWWWWWWWWK............", ".............KDDK.KMMKKCCCCWWWWCCCK.............", "............KDDDDKKMMK.KKKKDDK.KMMK.............", "............KKKKK.KKKK....KDDDDKKKK.............", "..........................KKKKK.................", "................................................", "................................................", "................................................"], "walk2": [".................KK...........KK................", "................KDDK.........KDDK...............", "...............KDDDDK.......KDDDDK..............", "...............KDDDDDK.....KDDDDDDK.............", "..............KDDPPDDDK...KDDPPPDDK.............", "....KKKKKK....KDDPPPPDOK.KDDPPPPDDK.............", "..KKWWWWWWKK..KDPPPPPDOKKDPPPPPPDK..............", ".KWWWWWWWWWWK.KDOOWWWOOOOOOWWWWODK..............", "KWWWWWWWWWWWWKKDOOWWWWOHYYYYHOWWWOOOK...........", "KWWWWWWWWWWWOHKDOOOOOOOHYYYYYYHOOOOOOK..........", "KWWWWWWWWWWOHHSKOOOOOOOHHHHHHHHHYYHOOOOK........", "KWWWWWWWWWOHHHSSKOOOOOHHHHHHHNNNNNNHOOOK........", ".KWWWWWWOHHHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......", "..KWWWWOHHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......", "...KWWOHHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......", "....KOOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......", ".....KOOOHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....", "......KOOOHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....", ".......KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....", "........KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......", "........KOOOOHHSK...KKWWWWWWWWWWWWWWWWKK........", ".........KOOOOHSK..KSSSSCCCCWWWWWWWWKK..........", ".........KOOOOOOKKKSOOOOOOOOWWWWWWWWWWK.........", ".........KOOOOOHHHHHOOOOOOOOWWWWWWWWWWWK........", "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........", "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........", "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........", "............KSSOOOOOOOOOOOOOWWWWWWWWK...........", ".............KSSOOOOOOWWWWWWWWWWWWWK............", "..............KDDKKMMKKCCCCWWWWCCCK.............", "..............KDDDKMMK.KKKKDDK.KMMK.............", "..............KKKKKKKK....KDDDKKKK..............", "..........................KKKK..................", "................................................", "................................................", "................................................"], "walk3": [".................KK...........KK................", "................KDDK.........KDDK...............", "...............KDDDDK.......KDDDDK..............", "...............KDDDDDK.....KDDDDDDK.............", "..............KDDPPDDDK...KDDPPPDDK.............", "..............KDDPPPPDOK.KDDPPPPDDK.............", "....KKKKKK....KDPPPPPDOKKDPPPPPPDK..............", "..KKWWWWWWKK..KDOOWWWOOOOOOWWWWODK..............", ".KWWWWWWWWWWK.KDOOWWWWOHYYYYHOWWWOOOK...........", "KWWWWWWWWWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........", "KWWWWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK........", "KWWWWWWWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK........", "KWWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......", ".KWWWWWWOHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......", "..KWWWWOHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......", "...KWWOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......", "....KOOHHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....", ".....KOOOHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....", "......KOOOHHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....", ".......KOOOHHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......", "........KOOOHHSSK...KKWWWWWWWWWWWWWWWWKK........", "........KOOOOHHSK..KSSSSCCCCWWWWWWWWKK..........", ".........KOOOOHSSKKSOOOOOOOOWWWWWWWWWWK.........", ".........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWK........", ".........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........", "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........", "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........", "............KSSOOOOOOOOOOOOOWWWWWWWWK...........", ".............KSSOOOOOOWWWWWWWWWWWWWK............", ".............KMMK.KDDKKCCCCWWWWCCCK.............", "............KMMMK.KDDDKKKKKMMK.KDDK.............", "............KKKK..KKKKK...KMMMKKKKDK............", "..........................KKKK.KKKK.............", "................................................", "................................................", "................................................"], "sit1": ["...............KK...........KK..................", "..............KDDK.........KDDK.................", ".............KDDDDK.......KDDDDK................", ".............KDDDDDK.....KDDDDDDK...............", "............KDDPPDDDK...KDDPPPDDK...............", "............KDDPPPPDOK.KDDPPPPDDK...............", "............KDPPPPPDOKKDPPPPPPDK................", "............KDOOWWWOOOOOOWWWWODK................", "............KDOOWWWWOHYYYYHOWWWOOOK.............", "...KKKKKK..KDOOOOOOOHYYYYYYHOOOOOOK.............", ".KKWWWWWWK.KOOOOOOOOHHHHHHHHHYYHOOOOK...........", "KWWWWWWWWWKOOOOOOOOHHHHHHHNNNNNNHOOOK...........", "KWWWWWWWWOHKOOOOOOHHHHHHHNNGGGBBNHOOOK..........", "KWWWWWWWOHHSKOOOOOHHHHHHHNNGGGBBNHOOOK..........", "KWWWWWWOHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK..........", ".KWWWWOHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK..........", "..KWWOHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK........", "...KOOHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK........", "....KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK........", ".....KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK..........", "......KOOOHSSK...KKWWWWWWWWWWWWWWWWKK...........", ".......KOOOHSSK..KSSSSCCCCWWWWWWWWKK............", "........KOOOHSSKKSOOOOOOOOWWWWWWWWWWK...........", ".........KOOOHSSKSOOOOOHHOWWWWWWWWWWWK..........", "..........KOOOHSSSOOOOOHHOWWWWWWWWWWWK..........", "...........KSSSOOOOOOOOOOOWWWWWWWWWWK...........", "............KKKKSSOOOOOOOOWWWWWWWWWK............", "................KKDDDDKKKKKDDDDDDK..............", ".................KDDDDDK..KDDDDDDK..............", ".................KKKKKK...KKKKKKKK..............", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "sit2": ["...............KK...........KK..................", "..............KDDK.........KDDK.................", ".............KDDDDK.......KDDDDK................", ".............KDDDDDK.....KDDDDDDK...............", "............KDDPPDDDK...KDDPPPDDK...............", "............KDDPPPPDOK.KDDPPPPDDK...............", "............KDPPPPPDOKKDPPPPPPDK................", "...KKKKKK...KDOOWWWOOOOOOWWWWODK................", ".KKWWWWWWK..KDOOWWWWOHYYYYHOWWWOOOK.............", "KWWWWWWWWWK.KDOOOOOOOHYYYYYYHOOOOOOK............", "KWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK...........", "KWWWWWWWOHHSKOOOOOOHHHHHHHSSSSSSHOOOK...........", "KWWWWWWOHHHSSKOOOOOHHHHHHOOOOOOOHOOOK...........", ".KWWWWOHHHHSSKOOOOHHHHHHHNNNNNNNHOOOK...........", "..KWWOHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK..........", "...KOOHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK..........", "....KOOOHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK........", ".....KOOOHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK........", "......KOOOHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK........", ".......KOOOHSK..KWWWWWWWWWWWWWWWWWWWWK..........", "........KOOOHSK..KKWWWWWWWWWWWWWWWWKK...........", ".........KOOOOK..KSSSSCCCCWWWWWWWWKK............", ".........KOOOOOKKSOOOOOOOOWWWWWWWWWWK...........", "..........KOOOOOKSOOOOOHHOWWWWWWWWWWWK..........", "...........KSSSSKSOOOOOHHOWWWWWWWWWWWK..........", "............KKKKKSOOOOOOOOWWWWWWWWWWK...........", "................KSSOOOOOOOWWWWWWWWWK............", "................KKDDDDKKKKKDDDDDDK..............", ".................KDDDDDK..KDDDDDDK..............", ".................KKKKKK...KKKKKKKK..............", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "sleep1": ["................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", ".................KK...........KK................", "................KDDK.........KDDK...............", "...............KDDDDK.......KDDDDK..............", ".......KKKKKK..KDDDDDK.....KDDDDDDK.............", ".....KKOOOOOOKKDDPPDDDK...KDDPPPDDK.............", "....KOOOOOOOOOKDDPPPPDOK.KDDPPPPDDK.............", "...KOOOOOHHHHHOKDPPPPPDOKKDPPPPPPDK.............", "..KOOOOOHHHHHHHOKDOOWWWOOOOOOWWWWODK............", ".KOOOOOHHHHHHHHHHDOOWWWWOHYYYYHOWWWOOOK.........", ".KOOOOOHHHHHHHHHHHHOOOOOOHYYYYYYHOOOOOOK........", "KSOOOOOHHHHHHHHHHHHHHHHHHHSSSSSSHOOOOOOK.KKKK...", ".KSOOOOOHHHHHHHSSSSOOOOOHNNNNNNHHOOOOONNKKWWWK..", "..KSOOOOOOHHHSSSSSSOOOWWHHHHHHHHWWWWWWNNKWWWWWK.", "..KSSOOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKWWWWWWWK", "...KSSOOOOOHSKKOOOOOKKWWWWWWRRRWWWWWWKKWWWWWWWWK", "...KSSSOOOOOHKOOOOOOOOKKKKKCCCCCCKKKKKWWWWWWWWWK", "....KSSSSOOOOKOOOOOHHHHHHHHOOOOOOHHWWWWWWWWWWWWK", ".....KKKSSSSOOOHHHHHHHHHHHHHHHHHHHOWWWWWWWWWWWWK", "........KKKSSSSOOOOOOHHHHHHHHHHHOWWWWWWWWWWWWWK.", "...........KKKSSSSOOOOOOOOOOOOOHWWWWWWWWWWWWWK..", "..............KKKKSSSSOOOOOOOOOWWWWWWWWWWWWWK...", "..................KKKKKKCCCCCCCWWWWWWWWWWWKK....", "........................KKKKKKKKKKKKKKKKKK......", "................................................", "................................................", "................................................"], "sleep2": ["................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", ".................KK...........KK................", "................KDDK.........KDDK...............", "...............KDDDDK.......KDDDDK..............", ".......KKKKKK..KDDDDDK.....KDDDDDDK.............", ".....KKOOOOOOKKDDPPDDDK...KDDPPPDDK.............", "....KOOOOOOOOOKDDPPPPDOK.KDDPPPPDDK.............", "...KOOOOOHHHHHOKDPPPPPDOKKDPPPPPPDK.............", "..KOOOOOHHHHHHHOKDOOWWWOOOOOOWWWWODK............", ".KOOOOOHHHHHHHHHHDOOWWWWOHYYYYHOWWWOOOK..KKKK...", "KSOOOOOHHHHHHHHHHHHOOOOOOHYYYYYYHOOOOOOKKWWWWK..", ".KSOOOOOHHHHHHHHHHHHHHHHHHSSSSSSHOOOOOOKWWWWWWK.", "..KSOOOOOHHHHHHSSSSOOOOOHNNNNNNHHOOOOONNKWWWWWWK", "..KSSOOOOOOHHSSSSSSOOOWWHHHHHHHHWWWWWWNNKWWWWWWK", "...KSSOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKWWWWWWWK", "...KSSSOOOOOHSKKOOOOKKWWWWWWRRRWWWWWWKKWWWWWWWWK", "....KSSSSOOOOHKOOOOOOOKKKKKCCCCCCKKKKKWWWWWWWWWK", ".....KKKSSSSOOOKOOOOHHHHHHHHOOOOOHHWWWWWWWWWWWK.", "........KKKSSSSOOHHHHHHHHHHHHHHHHOWWWWWWWWWWWWK.", "...........KKKSSSSOOOOOHHHHHHHHHOWWWWWWWWWWWWK..", "..............KKKKSSSSOOOOOOOOOOWWWWWWWWWWWWK...", "..................KKKKKKCCCCCCCWWWWWWWWWWWKK....", "........................KKKKKKKKKKKKKKKKKK......", "................................................", "................................................", "................................................"], "jump1": ["...................KK...........KK..............", "..................KDDK.........KDDK.............", ".................KDDDDK.......KDDDDK............", "....KKKKKK.......KDDDDDK.....KDDDDDDK...........", "..KKWWWWWWKK....KDDPPDDDK...KDDPPPDDK...........", ".KWWWWWWWWWWK...KDDPPPPDOK.KDDPPPPDDK...........", "KWWWWWWWWWWWWK..KDPPPPPDOKKDPPPPPPDK............", "KWWWWWWWWWWWOHK.KDOOWWWOOOOOOWWWWODK............", "KWWWWWWWWWWOHHSKKDOOWWWWOHYYYYHOWWWOOOK.........", ".KWWWWWWWWOHHHSSKDOOOOOOOHYYYYYYHOOOOOOK........", "..KWWWWWWOHHHHSSKOOOOOOOOHHHHHHHHHYYHOOOOK......", "...KWWWWOHHHHHSSKOOOOOOHHHHHHHNNNNNNHOOOK.......", "....KWWOHHHHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......", ".....KOOHHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......", "......KOOOHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......", ".......KOOOHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......", "........KOOOHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....", ".........KOOOHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....", "..........KOOOOHSK.KWWWWWWRRRWWAAAAWWWWWWWKK....", "..........KOOOOOOK..KWWWWWWWWWWWWWWWWWWWWK......", "..........KOOOOOOOK..KKWWWWWWWWWWWWWWWWKK.......", "..........KOOOOOOOOK.KSSSSCCCCWWWWWWWWKK........", "...........KOOOOOOOOKKSOOOOOOOOWWWWWWWWWWK......", "...........KOOOOOOOOOHHHHHHOOOOWWWWWWWWWWWK.....", "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK.....", ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWK......", "..............KSSOOOOOOOOOOOOOWWWWWWWWWWK.......", ".............KDDKSSOOOOOOWWWWWWWWWWWWWK.........", "............KDDDDK.KKKKKCCCCWWWWCCCKDDK.........", "...........KDDDDDK......KKKKKKKKK..KDDDDK.......", "...........KKKKKK...................KKKKK.......", "................................................", "................................................", "................................................", "................................................", "................................................"], "dance1": [".................KK...........KK................", "................KDDK.........KDDK...............", "...............KDDDDK.......KDDDDK..............", "....KKKKKK.....KDDDDDK.....KDDDDDDK.............", "..KKWWWWWWKK..KDDPPDDDK...KDDPPPDDK.............", ".KWWWWWWWWWWK.KDDPPPPDOK.KDDPPPPDDK.............", "KWWWWWWWWWWWWKKDPPPPPDOKKDPPPPPPDK..............", "KWWWWWWWWWWWOHKDOOWWWOOOOOOWWWWODK..............", "KWWWWWWWWWWOHHSKDOOWWWWOHYYYYHOWWWOOOK..........", ".KWWWWWWWWOHHHSSKDOOOOOOHYYYYYYHOOOOOOK.........", "..KWWWWWWOHHHHSSKOOOOOOOOHHHHHHHHHYYHOOOOK......", "...KWWWWOHHHHHSSKOOOOOOHHHHHHHNNNNNNHOOOK.......", "....KWWOHHHHHHSSKOOOOOHHHHHHNNHHHHHHNHOOOK......", ".....KOOHHHHHHSSKOOOOHHHHHHNHHHHHHHHNHHOOOK.....", "......KOOOHHHHSSKOOOHWWHHHHNHHHHHHHHNHOOOK......", ".......KOOOHHHSSKOOWWWWWHHHHHHHHHHHHHWWONNK.....", "........KOOOHHSSKWWWWWWWWHHHRRRHHHHWWWWONNK.....", ".........KOOOHSSKKWWWWWWWRRRRRRWWWWWWWWWWKK.....", "..........KOOOOHSK.KWWWWWWWWWWWWWWWWWWWWK.......", "..........KOOOOOOK..KKWWWWWWWWWWWWWWWWKK........", "..........KOOOOOOOK...KSSSSCCCCWWWWWWKK..KKK....", "...........KOOOOOOOK.KSOOOOOOOOWWWWWWWK.KDDDK...", "...........KOOOOOOOOHHHHHHOOOOOWWWWWWWKKDDDDK...", "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWDDK....", ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWKK.....", "..............KSSOOOOOOOOOOOOOWWWWWWWWWWKKK.....", "...............KSSOOOOOOWWWWWWWWWWWWWWKMMK......", "...............KDDK..KKKKCCCCWWWWCCCCKMMMK......", "..............KDDDDK.....KKKKKDDK....KKKK.......", ".............KDDDDDK........KDDDDK..............", ".............KKKKKK.........KKKKK...............", "................................................", "................................................", "................................................", "................................................", "................................................"], "dance2": ["................................................", "..................KK...........KK...............", ".................KDDK.........KDDK..............", "................KDDDDK.......KDDDDK.............", "................KDDDDDK.....KDDDDDDK............", "...............KDDPPDDDK...KDDPPPDDK............", "...............KDDPPPPDOK.KDDPPPPDDK............", "...............KDPPPPPDOKKDPPPPPPDK.............", ".....KKKKKK....KDOOWWWOOOOOOWWWWODK.............", "...KKWWWWWWKK.KDOOWWWWOHYYYYHOWWWOOOK...........", "..KWWWWWWWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........", ".KWWWWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK.......", ".KWWWWWWWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK.......", "..KWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK......", "...KWWWWWWOHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK......", "....KWWWWOHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK......", ".....KWWOHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK......", "......KOOHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK....", ".......KOOOHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK....", "........KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK....", ".........KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK..KKK.", ".........KOOOOHHSK...KKWWWWWWWWWWWWWWWWKK..KDDDK", "..........KOOOOHSSK..KSSSSCCCCWWWWWWWWKK..KDDDDK", "..........KOOOOOHSSKKSOOOOOOOOWWWWWWWWWKKKDDDDK.", "...........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWWWKK...", "...........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWKK.....", "............KSSOOHHHHHHOOOOOOWWWWWWWWWWWK.......", ".............KSSOOOOOOOOOOOOOWWWWWWWWWWK........", "..............KSSOOOOOOWWWWWWWWWWWWWWWK.........", ".............KMMK..KKKKCCCCWWWWCCCKDDK..........", "............KMMMK......KKKKKKKKK..KDDDDK........", "............KKKK..................KKKKK.........", "................................................", "................................................", "................................................", "................................................"]}, "fennec": {"walk1": ["...........KKKKK...............KKKKK............", "..........KDDDDDK.............KDDDDDK...........", ".........KDDPPPDDK...........KDDPPPDDK..........", "........KDDPPPPPDDK.........KDDPPPPPDDK.........", "........KDPPPPPPPDOK.......KDOOPPPPPPDDK........", ".......KDPPPPPPPPPDOK.....KDOOPPPPPPPPDDK.......", "....KKKKDPPPPPPPPPPDOK...KDOOPPPPPPPPPDDK.......", "..KKTTTTKDPPPPPPPPPDOKK.KKDOPPPPPPPPPPDDK.......", ".KTTTTTTTKDOOWWWWWOOOOOKOOOOOWWWWWPPPDDK........", "KTTTTTTTTOKDOOWWWWOHYYYYHOWWWOOOOOWWODK.........", "KTTTTTTTTTTTOHKOOOOOOOOHHHHHHHHHYYHOOOOK........", "KTTTTTTWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK........", "KTTTTTTWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......", "KWWWWWWWOHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......", ".KWWWWWOHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......", "..KWWWOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......", "...KWOHHHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....", "....KOOHHHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....", ".....KOOOHHHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....", "......KOOOHHHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......", ".......KOOOHHHSSK...KKWWWWWWWWWWWWWWWWKK........", "........KOOOHHSSK..KSSSSCCCCWWWWWWWWKK..........", "........KOOOOHHSSKKSOOOOOOOOWWWWWWWWWWK.........", ".........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWK........", ".........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........", "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........", "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........", "............KSSOOOOOOOOOOOOOWWWWWWWWK...........", ".............KSSOOOOOOWWWWWWWWWWWWWK............", ".............KDDK.KMMKKCCCCWWWWCCCK.............", "............KDDDDKKMMK.KKKKDDK.KMMK.............", "............KKKKK.KKKK....KDDDDKKKK.............", "..........................KKKKK.................", "................................................", "................................................", "................................................"], "walk2": ["...........KKKKK...............KKKKK............", "..........KDDDDDK.............KDDDDDK...........", ".........KDDPPPDDK...........KDDPPPDDK..........", "........KDDPPPPPDDK.........KDDPPPPPDDK.........", "........KDPPPPPPPDOK.......KDOOPPPPPPDDK........", ".......KDPPPPPPPPPDOK.....KDOOPPPPPPPPDDK.......", "....KKKKDPPPPPPPPPPDOK...KDOOPPPPPPPPPDDK.......", "..KKTTTTKDPPPPPPPPPDOKK.KKDOPPPPPPPPPPDDK.......", ".KTTTTTTTKDOOWWWWWOOOOOKOOOOOWWWWWPPPDDK........", "KTTTTTTTTOKDOOWWWWOHYYYYHOWWWOOOOOWWODK.........", "KTTTTTTWWWWOHHSKOOOOOOOHHHHHHHHHYYHOOOOK........", "KTTTTTTWWWOHHHSSKOOOOOHHHHHHHNNNNNNHOOOK........", ".KTTTTTTOHHHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......", "..KWWWWOHHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......", "...KWWOHHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......", "....KOOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......", ".....KOOOHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....", "......KOOOHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....", ".......KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....", "........KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......", "........KOOOOHHSK...KKWWWWWWWWWWWWWWWWKK........", ".........KOOOOHSK..KSSSSCCCCWWWWWWWWKK..........", ".........KOOOOOOKKKSOOOOOOOOWWWWWWWWWWK.........", ".........KOOOOOHHHHHOOOOOOOOWWWWWWWWWWWK........", "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........", "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........", "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........", "............KSSOOOOOOOOOOOOOWWWWWWWWK...........", ".............KSSOOOOOOWWWWWWWWWWWWWK............", "..............KDDKKMMKKCCCCWWWWCCCK.............", "..............KDDDKMMK.KKKKDDK.KMMK.............", "..............KKKKKKKK....KDDDKKKK..............", "..........................KKKK..................", "................................................", "................................................", "................................................"], "walk3": ["...........KKKKK...............KKKKK............", "..........KDDDDDK.............KDDDDDK...........", ".........KDDPPPDDK...........KDDPPPDDK..........", "........KDDPPPPPDDK.........KDDPPPPPDDK.........", "........KDPPPPPPPDOK.......KDOOPPPPPPDDK........", ".......KDPPPPPPPPPDOK.....KDOOPPPPPPPPDDK.......", "....KKKKDPPPPPPPPPPDOK...KDOOPPPPPPPPPDDK.......", "..KKTTTTKDPPPPPPPPPDOKK.KKDOPPPPPPPPPPDDK.......", ".KTTTTTTTKDOOWWWWWOOOOOKOOOOOWWWWWPPPDDK........", "KTTTTTTTTOKDOOWWWWOHYYYYHOWWWOOOOOWWODK.........", "KTTTTTTTTTTTOHKOOOOOOOOHHHHHHHHHYYHOOOOK........", "KTTTTTTWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK........", "KTTTTTTWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......", ".KWWWWWWOHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......", "..KWWWWOHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......", "...KWWOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......", "....KOOHHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....", ".....KOOOHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....", "......KOOOHHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....", ".......KOOOHHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......", "........KOOOHHSSK...KKWWWWWWWWWWWWWWWWKK........", "........KOOOOHHSK..KSSSSCCCCWWWWWWWWKK..........", ".........KOOOOHSSKKSOOOOOOOOWWWWWWWWWWK.........", ".........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWK........", ".........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........", "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........", "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........", "............KSSOOOOOOOOOOOOOWWWWWWWWK...........", ".............KSSOOOOOOWWWWWWWWWWWWWK............", ".............KMMK.KDDKKCCCCWWWWCCCK.............", "............KMMMK.KDDDKKKKKMMK.KDDK.............", "............KKKK..KKKKK...KMMMKKKKDK............", "..........................KKKK.KKKK.............", "................................................", "................................................", "................................................"], "sit1": [".........KKKKK...............KKKKK..............", "........KDDDDDK.............KDDDDDK.............", ".......KDDPPPDDK...........KDDPPPDDK............", "......KDDPPPPPDDK.........KDDPPPPPDDK...........", "......KDPPPPPPPDOK.......KDOOPPPPPPDDK..........", ".....KDPPPPPPPPPDOK.....KDOOPPPPPPPPDDK.........", ".....KDPPPPPPPPPPDOK...KDOOPPPPPPPPPDDK.........", "...KKKKDPPPPPPPPPDOKK.KKDOPPPPPPPPPPDDK.........", ".KKTTTTKDOOWWWWWOOOOOOKOOOOOWWWWWPPPDDK.........", "KTTTTTTTKDOOWWWWOHYYYYHOWWWOOOOOWWODKK..........", ".KKTTTTTTK.KOOOOOOOOHHHHHHHHHYYHOOOOK...........", "KTTTTTTWWWKOOOOOOOOHHHHHHHNNNNNNHOOOK...........", "KTTTTTTWWOHKOOOOOOHHHHHHHNNGGGBBNHOOOK..........", "KWWWWWWWOHHSKOOOOOHHHHHHHNNGGGBBNHOOOK..........", "KWWWWWWOHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK..........", ".KWWWWOHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK..........", "..KWWOHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK........", "...KOOHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK........", "....KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK........", ".....KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK..........", "......KOOOHSSK...KKWWWWWWWWWWWWWWWWKK...........", ".......KOOOHSSK..KSSSSCCCCWWWWWWWWKK............", "........KOOOHSSKKSOOOOOOOOWWWWWWWWWWK...........", ".........KOOOHSSKSOOOOOHHOWWWWWWWWWWWK..........", "..........KOOOHSSSOOOOOHHOWWWWWWWWWWWK..........", "...........KSSSOOOOOOOOOOOWWWWWWWWWWK...........", "............KKKKSSOOOOOOOOWWWWWWWWWK............", "................KKDDDDKKKKKDDDDDDK..............", ".................KDDDDDK..KDDDDDDK..............", ".................KKKKKK...KKKKKKKK..............", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "sit2": [".........KKKKK...............KKKKK..............", "........KDDDDDK.............KDDDDDK.............", ".......KDDPPPDDK...........KDDPPPDDK............", "......KDDPPPPPDDK.........KDDPPPPPDDK...........", "......KDPPPPPPPDOK.......KDOOPPPPPPDDK..........", ".....KDPPPPPPPPPDOK.....KDOOPPPPPPPPDDK.........", ".....KDPPPPPPPPPPDOK...KDOOPPPPPPPPPDDK.........", "...KKKKDPPPPPPPPPDOKK.KKDOPPPPPPPPPPDDK.........", ".KKTTTTKDOOWWWWWOOOOOOKOOOOOWWWWWPPPDDK.........", "KTTTTTTTKDOOWWWWOHYYYYHOWWWOOOOOWWODKK..........", "KTTTTTTWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK...........", "KTTTTTTWOHHSKOOOOOOHHHHHHHSSSSSSHOOOK...........", "KTTTTTTOHHHSSKOOOOOHHHHHHOOOOOOOHOOOK...........", ".KWWWWOHHHHSSKOOOOHHHHHHHNNNNNNNHOOOK...........", "..KWWOHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK..........", "...KOOHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK..........", "....KOOOHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK........", ".....KOOOHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK........", "......KOOOHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK........", ".......KOOOHSK..KWWWWWWWWWWWWWWWWWWWWK..........", "........KOOOHSK..KKWWWWWWWWWWWWWWWWKK...........", ".........KOOOOK..KSSSSCCCCWWWWWWWWKK............", ".........KOOOOOKKSOOOOOOOOWWWWWWWWWWK...........", "..........KOOOOOKSOOOOOHHOWWWWWWWWWWWK..........", "...........KSSSSKSOOOOOHHOWWWWWWWWWWWK..........", "............KKKKKSOOOOOOOOWWWWWWWWWWK...........", "................KSSOOOOOOOWWWWWWWWWK............", "................KKDDDDKKKKKDDDDDDK..............", ".................KDDDDDK..KDDDDDDK..............", ".................KKKKKK...KKKKKKKK..............", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "sleep1": ["................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "...........KKKKK...............KKKKK............", "..........KDDDDDK.............KDDDDDK...........", ".........KDDPPPDDK...........KDDPPPDDK..........", ".......KKKDPPPPPDDK.........KDDPPPPPDDK.........", ".....KKOOOKDPPPPPDOK.......KDOOPPPPPPDDK........", "....KOOOOOOKDPPPPPDOK.....KDOOPPPPPPPPDDK.......", "...KOOOOOHHHKDPPPPPDOKK.KKDOPPPPPPPPPPDDK.......", "..KOOOOOHHHHHKDOOWWWOOOOOOWWWWWPPPPPPDDK........", ".KOOOOOHHHHHHHHHHDOOWWWWOHYYYYHOWWWOOOK.........", ".KOOOOOHHHHHHHHHHHHOOOOOOHYYYYYYHOOOOOOK........", "KSOOOOOHHHHHHHHHHHHHHHHHHHSSSSSSHOOOOOOK.KKKK...", ".KSOOOOOHHHHHHHSSSSOOOOOHNNNNNNHHOOOOONNKKWWWK..", "..KSOOOOOOHHHSSSSSSOOOWWHHHHHHHHWWWWWWNNKWWWWWK.", "..KSSOOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKWWWWWWWK", "...KSSOOOOOHSKKOOOOOKKWWWWWWRRRWWWWWWKKWWWWWWWWK", "...KSSSOOOOOHKOOOOOOOOKKKKKCCCCCCKKKKKWWWWWWWWWK", "....KSSSSOOOOKOOOOOHHHHHHHHOOOOOOHHWWWWWWWWWWWWK", ".....KKKSSSSOOOHHHHHHHHHHHHHHHHHHHOWWWWWWWWWWWWK", "........KKKSSSSOOOOOOHHHHHHHHHHHOWWWWWWWWWWWWWK.", "...........KKKSSSSOOOOOOOOOOOOOHWWWWWWWWWWWWWK..", "..............KKKKSSSSOOOOOOOOOWWWWWWWWWWWWWK...", "..................KKKKKKCCCCCCCWWWWWWWWWWWKK....", "........................KKKKKKKKKKKKKKKKKK......", "................................................", "................................................", "................................................"], "sleep2": ["................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "...........KKKKK...............KKKKK............", "..........KDDDDDK.............KDDDDDK...........", ".........KDDPPPDDK...........KDDPPPDDK..........", ".......KKKDPPPPPDDK.........KDDPPPPPDDK.........", ".....KKOOOKDPPPPPDOK.......KDOOPPPPPPDDK........", "....KOOOOOOKDPPPPPDOK.....KDOOPPPPPPPPDDK.......", "...KOOOOOHHHKDPPPPPDOKK.KKDOPPPPPPPPPPDDK.......", "..KOOOOOHHHHHKDOOWWWOOOOOOWWWWWPPPPPPDDK........", "..KOOOOOHHHHHHHOKDOOWWWOOOOOOWWWWODK............", ".KOOOOOHHHHHHHHHHDOOWWWWOHYYYYHOWWWOOOK..KKKK...", "KSOOOOOHHHHHHHHHHHHOOOOOOHYYYYYYHOOOOOOKKWWWWK..", ".KSOOOOOHHHHHHHHHHHHHHHHHHSSSSSSHOOOOOOKWWWWWWK.", "..KSOOOOOHHHHHHSSSSOOOOOHNNNNNNHHOOOOONNKWWWWWWK", "..KSSOOOOOOHHSSSSSSOOOWWHHHHHHHHWWWWWWNNKWWWWWWK", "...KSSOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKWWWWWWWK", "...KSSSOOOOOHSKKOOOOKKWWWWWWRRRWWWWWWKKWWWWWWWWK", "....KSSSSOOOOHKOOOOOOOKKKKKCCCCCCKKKKKWWWWWWWWWK", ".....KKKSSSSOOOKOOOOHHHHHHHHOOOOOHHWWWWWWWWWWWK.", "........KKKSSSSOOHHHHHHHHHHHHHHHHOWWWWWWWWWWWWK.", "...........KKKSSSSOOOOOHHHHHHHHHOWWWWWWWWWWWWK..", "..............KKKKSSSSOOOOOOOOOOWWWWWWWWWWWWK...", "..................KKKKKKCCCCCCCWWWWWWWWWWWKK....", "........................KKKKKKKKKKKKKKKKKK......", "................................................", "................................................", "................................................"], "jump1": ["...........KKKKK...............KKKKK............", "..........KDDDDDK.............KDDDDDK...........", ".........KDDPPPDDK...........KDDPPPDDK..........", "....KKKKKDDPPPPPDDK.........KDDPPPPPDDK.........", "..KKTTTTTKDPPPPPPDOK.......KDOOPPPPPPDDK........", ".KTTTTTTTKDPPPPPPPDOK.....KDOOPPPPPPPPDDK.......", "KTTTTTTTTOKDPPPPPPPDOKK.KKDOPPPPPPPPPPDDK.......", "KTTTTTTTOOHKDOOWWWOOOOOOWWWWWPPPPPPPPDDK........", "KTTTTTTOOHHSKDOOWWWWOHYYYYHOWWWOOOOODKK.........", ".KTTTTTTWWOHHHSSKDOOOOOOOHYYYYYYHOOOOOOK........", "..KTTTTTTOHHHHSSKOOOOOOOOHHHHHHHHHYYHOOOOK......", "...KWWWWOHHHHHSSKOOOOOOHHHHHHHNNNNNNHOOOK.......", "....KWWOHHHHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......", ".....KOOHHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......", "......KOOOHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......", ".......KOOOHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......", "........KOOOHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....", ".........KOOOHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....", "..........KOOOOHSK.KWWWWWWRRRWWAAAAWWWWWWWKK....", "..........KOOOOOOK..KWWWWWWWWWWWWWWWWWWWWK......", "..........KOOOOOOOK..KKWWWWWWWWWWWWWWWWKK.......", "..........KOOOOOOOOK.KSSSSCCCCWWWWWWWWKK........", "...........KOOOOOOOOKKSOOOOOOOOWWWWWWWWWWK......", "...........KOOOOOOOOOHHHHHHOOOOWWWWWWWWWWWK.....", "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK.....", ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWK......", "..............KSSOOOOOOOOOOOOOWWWWWWWWWWK.......", ".............KDDKSSOOOOOOWWWWWWWWWWWWWK.........", "............KDDDDK.KKKKKCCCCWWWWCCCKDDK.........", "...........KDDDDDK......KKKKKKKKK..KDDDDK.......", "...........KKKKKK...................KKKKK.......", "................................................", "................................................", "................................................", "................................................", "................................................"], "dance1": ["...........KKKKK...............KKKKK............", "..........KDDDDDK.............KDDDDDK...........", ".........KDDPPPDDK...........KDDPPPDDK..........", "....KKKKKDDPPPPPDDK.........KDDPPPPPDDK.........", "..KKTTTTTKDPPPPPPDOK.......KDOOPPPPPPDDK........", ".KTTTTTTTKDPPPPPPPDOK.....KDOOPPPPPPPPDDK.......", "KTTTTTTTTOKDPPPPPPPDOKK.KKDOPPPPPPPPPPDDK.......", "KTTTTTTTOOHKDOOWWWOOOOOOWWWWWPPPPPPPPDDK........", "KTTTTTTOOHHSKDOOWWWWOHYYYYHOWWWOOOOODKK.........", ".KTTTTTTWWOHHHSSKDOOOOOOHYYYYYYHOOOOOOK.........", "..KTTTTTTOHHHHSSKOOOOOOOOHHHHHHHHHYYHOOOOK......", "...KWWWWOHHHHHSSKOOOOOOHHHHHHHNNNNNNHOOOK.......", "....KWWOHHHHHHSSKOOOOOHHHHHHNNHHHHHHNHOOOK......", ".....KOOHHHHHHSSKOOOOHHHHHHNHHHHHHHHNHHOOOK.....", "......KOOOHHHHSSKOOOHWWHHHHNHHHHHHHHNHOOOK......", ".......KOOOHHHSSKOOWWWWWHHHHHHHHHHHHHWWONNK.....", "........KOOOHHSSKWWWWWWWWHHHRRRHHHHWWWWONNK.....", ".........KOOOHSSKKWWWWWWWRRRRRRWWWWWWWWWWKK.....", "..........KOOOOHSK.KWWWWWWWWWWWWWWWWWWWWK.......", "..........KOOOOOOK..KKWWWWWWWWWWWWWWWWKK........", "..........KOOOOOOOK...KSSSSCCCCWWWWWWKK..KKK....", "...........KOOOOOOOK.KSOOOOOOOOWWWWWWWK.KDDDK...", "...........KOOOOOOOOHHHHHHOOOOOWWWWWWWKKDDDDK...", "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWDDK....", ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWKK.....", "..............KSSOOOOOOOOOOOOOWWWWWWWWWWKKK.....", "...............KSSOOOOOOWWWWWWWWWWWWWWKMMK......", "...............KDDK..KKKKCCCCWWWWCCCCKMMMK......", "..............KDDDDK.....KKKKKDDK....KKKK.......", ".............KDDDDDK........KDDDDK..............", ".............KKKKKK.........KKKKK...............", "................................................", "................................................", "................................................", "................................................", "................................................"], "dance2": ["...........KKKKK...............KKKKK............", "..........KDDDDDK.............KDDDDDK...........", ".........KDDPPPDDK...........KDDPPPDDK..........", "....KKKKKDDPPPPPDDK.........KDDPPPPPDDK.........", "..KKTTTTTKDPPPPPPDOK.......KDOOPPPPPPDDK........", ".KTTTTTTTKDPPPPPPPDOK.....KDOOPPPPPPPPDDK.......", "KTTTTTTTTOKDPPPPPPPDOKK.KKDOPPPPPPPPPPDDK.......", "KTTTTTTTOOHKDOOWWWOOOOOOWWWWWPPPPPPPPDDK........", "KTTTTTTOOHHSKDOOWWWWOHYYYYHOWWWOOOOODKK.........", "...KKTTTTTTKK.KDOOWWWWOHYYYYHOWWWOOOK...........", "..KTTTTTTWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........", ".KTTTTTTTTTTTOHKOOOOOOOOHHHHHHHHHYYHOOOOK.......", ".KTTTTTTWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK.......", "..KWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK......", "...KWWWWWWOHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK......", "....KWWWWOHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK......", ".....KWWOHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK......", "......KOOHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK....", ".......KOOOHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK....", "........KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK....", ".........KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK..KKK.", ".........KOOOOHHSK...KKWWWWWWWWWWWWWWWWKK..KDDDK", "..........KOOOOHSSK..KSSSSCCCCWWWWWWWWKK..KDDDDK", "..........KOOOOOHSSKKSOOOOOOOOWWWWWWWWWKKKDDDDK.", "...........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWWWKK...", "...........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWKK.....", "............KSSOOHHHHHHOOOOOOWWWWWWWWWWWK.......", ".............KSSOOOOOOOOOOOOOWWWWWWWWWWK........", "..............KSSOOOOOOWWWWWWWWWWWWWWWK.........", ".............KMMK..KKKKCCCCWWWWCCCKDDK..........", "............KMMMK......KKKKKKKKK..KDDDDK........", "............KKKK..................KKKKK.........", "................................................", "................................................", "................................................", "................................................"]}, "cat": {"walk1": ["...KKKKK........................................", "..KOOOOOK........KKK...........KKK..............", ".KOOOOOOOK......KOTOK.........KOTOK.............", ".KOOOKKKOK.....KOOOTOK.......KOTOOOK............", "..KKK..KOOK....KOPPPTOK.....KOTPPPOK............", ".......KTTK...KOPPPPPTOK...KOTPPPPPOK...........", "......KOOOOK..KOPPPPPTOKKKKKOTPPPPPOK...........", "......KOOOOK..KOOOWWWOOOTTTOOOWWWOOOK...........", ".....KTTTTK...KOOOWWWOHYYYYYHOWWWOOOOK..........", ".....KOOOOK..KOOOOOOOHYYYYYYYHOOOOOOOOK.........", ".....KOOOOK..KOOOOOOOOHHHHHHHHHYYHOOOOOK........", ".....KTTTTK.KOOOOOOOOHHHHHHHNNNNNNHOOOOK........", "......KOOOOKKOOOOOOOOHHHHHHNNGGGBBNHOOOK........", "......KOOOOHKOOOOOOOHHHHHHHNNGGGBBNHOOOK........", ".......KTTTTHKOOOOOOHWWHHHHHBBBBEEBHOOOK........", ".......KOOOOHSKOOOOWWWWWHHHHBEEEEAAHOOOK........", "........KOOOHHSKWWWWWWWWWHHHEEAAAAGHWWRRK.......", "........KTTTTHSSKWWWWWWWWRRRHEAAAAGWWWWRRK......", ".........KOOOHHSK.KWWWWWWRRRWWAAAAWWWWWWKK......", ".........KOOOOHHSK.KWWWWWWWWWWWWWWWWWWWWK.......", "..........KOOOOHSSK..KKWWWWWWWWWWWWWWWKK........", "..........KOOOOHHSSK.KSSSSCCCCWWWWWWWKK.........", "..........KOOOOOTTSSKKSOOOOOOOOWWWWWWWWWK.......", "..........KOOOOOTTHHHHHOOOOOTOOWWWWWWWWWWK......", "..........KOOOOOOOOOOOOOOOOTTOOWWWWWWWWWWK......", "...........KOOOOOOOOOOOOOOTTOOOWWWWWWWWWK.......", "...........KSSOOHHHHHHOOOOOOOOOWWWWWWWWK........", "............KSSOOOOOOOOOOOOOOOOWWWWWWWK.........", ".............KSSOOOOOOWWWWWWWWWWWWWWWK..........", ".............KDDK.KMMKKCCCCWWWWCCCCK............", "............KDDDDKKMMK.KKKKDDK.KMMK.............", "............KKKKK.KKKK....KDDDDKKKK.............", "..........................KKKKK.................", "................................................", "................................................", "................................................"], "walk2": ["....KKKKK.......................................", "...KOOOOOK.......KKK...........KKK..............", "..KOOOOOOOK.....KOTOK.........KOTOK.............", "..KOOOKKKOK....KOOOTOK.......KOTOOOK............", "...KKK..KOOK...KOPPPTOK.....KOTPPPOK............", "........KTTK..KOPPPPPTOK...KOTPPPPPOK...........", ".......KOOOOK.KOPPPPPTOKKKKKOTPPPPPOK...........", ".......KOOOOK.KOOOWWWOOOTTTOOOWWWOOOK...........", "......KTTTTK..KOOOWWWOHYYYYYHOWWWOOOOK..........", "......KOOOOK.KOOOOOOOHYYYYYYYHOOOOOOOOK.........", "......KOOOOK.KOOOOOOOOHHHHHHHHHYYHOOOOOK........", "......KTTTTKKOOOOOOOOHHHHHHHNNNNNNHOOOOK........", ".......KOOOOKOOOOOOOOHHHHHHNNGGGBBNHOOOK........", ".......KOOOOHKOOOOOOOHHHHHHHNNGGGBBNHOOOK.......", ".......KTTTTHKOOOOOOHWWHHHHHBBBBEEBHOOOK........", "........KOOOHSKOOOOWWWWWHHHHBEEEEAAHOOOK........", "........KOOOHHSKWWWWWWWWWHHHEEAAAAGHWWRRK.......", ".........KTTTHSSKWWWWWWWWRRRHEAAAAGWWWWRRK......", ".........KOOOHHSK.KWWWWWWRRRWWAAAAWWWWWWKK......", ".........KOOOOHHSK.KWWWWWWWWWWWWWWWWWWWWK.......", "..........KOOOOHSSK..KKWWWWWWWWWWWWWWWKK........", "..........KOOOOHHSSK.KSSSSCCCCWWWWWWWKK.........", "..........KOOOOOTTSSKKSOOOOOOOOWWWWWWWWWK.......", "..........KOOOOOTTHHHHHOOOOOTOOWWWWWWWWWWK......", "..........KOOOOOOOOOOOOOOOOTTOOWWWWWWWWWWK......", "...........KOOOOOOOOOOOOOOTTOOOWWWWWWWWWK.......", "...........KSSOOHHHHHHOOOOOOOOOWWWWWWWWK........", "............KSSOOOOOOOOOOOOOOOOWWWWWWWK.........", ".............KSSOOOOOOWWWWWWWWWWWWWWWK..........", "..............KDDKKMMKKCCCCWWWWCCCCK............", "..............KDDDKMMK.KKKKDDK.KMMK.............", "..............KKKKKKKK....KDDDKKKK..............", "..........................KKKK..................", "................................................", "................................................", "................................................"], "walk3": ["...KKKKK........................................", "..KOOOOOK........KKK...........KKK..............", ".KOOOOOOOK......KOTOK.........KOTOK.............", ".KOOOKKKOK.....KOOOTOK.......KOTOOOK............", "..KKK..KOOK....KOPPPTOK.....KOTPPPOK............", ".......KTTK...KOPPPPPTOK...KOTPPPPPOK...........", "......KOOOOK..KOPPPPPTOKKKKKOTPPPPPOK...........", "......KOOOOK..KOOOWWWOOOTTTOOOWWWOOOK...........", ".....KTTTTK...KOOOWWWOHYYYYYHOWWWOOOOK..........", ".....KOOOOK..KOOOOOOOHYYYYYYYHOOOOOOOOK.........", ".....KOOOOK..KOOOOOOOOHHHHHHHHHYYHOOOOOK........", ".....KTTTTK.KOOOOOOOOHHHHHHHNNNNNNHOOOOK........", "......KOOOOKKOOOOOOOOHHHHHHNNGGGBBNHOOOK........", "......KOOOOHKOOOOOOOHHHHHHHNNGGGBBNHOOOK........", ".......KTTTTHKOOOOOOHWWHHHHHBBBBEEBHOOOK........", ".......KOOOOHSKOOOOWWWWWHHHHBEEEEAAHOOOK........", "........KOOOHHSKWWWWWWWWWHHHEEAAAAGHWWRRK.......", "........KTTTTHSSKWWWWWWWWRRRHEAAAAGWWWWRRK......", ".........KOOOHHSK.KWWWWWWRRRWWAAAAWWWWWWKK......", ".........KOOOOHHSK.KWWWWWWWWWWWWWWWWWWWWK.......", "..........KOOOOHSSK..KKWWWWWWWWWWWWWWWKK........", "..........KOOOOHHSSK.KSSSSCCCCWWWWWWWKK.........", "..........KOOOOOTTSSKKSOOOOOOOOWWWWWWWWWK.......", "..........KOOOOOTTHHHHHOOOOOTOOWWWWWWWWWWK......", "..........KOOOOOOOOOOOOOOOOTTOOWWWWWWWWWWK......", "...........KOOOOOOOOOOOOOOTTOOOWWWWWWWWWK.......", "...........KSSOOHHHHHHOOOOOOOOOWWWWWWWWK........", "............KSSOOOOOOOOOOOOOOOOWWWWWWWK.........", ".............KSSOOOOOOWWWWWWWWWWWWWWWK..........", ".............KMMK.KDDKKCCCCWWWWCCCCK............", "............KMMMK.KDDDKKKKKMMK.KDDK.............", "............KKKK..KKKKK...KMMMKKKKDK............", "..........................KKKK.KKKK.............", "................................................", "................................................", "................................................"], "sit1": [".....KKKKK......................................", "....KOOOOOK......KKK...........KKK..............", "...KOOOOOOOK....KOTOK.........KOTOK.............", "...KOOOKKKOK...KOOOTOK.......KOTOOOK............", "....KKK..KOOK..KOPPPTOK.....KOTPPPOK............", ".........KTTK.KOPPPPPTOK...KOTPPPPPOK...........", "........KOOOOKKOPPPPPTOKKKKKOTPPPPPOK...........", "........KOOOOKKOOOWWWOOOTTTOOOWWWOOOK...........", ".......KTTTTK.KOOOWWWOHYYYYYHOWWWOOOOK..........", ".......KOOOOKKOOOOOOOHYYYYYYYHOOOOOOOOK.........", ".......KOOOOKOOOOOOOOHHHHHHHHHYYHOOOOOK.........", ".......KTTTTKOOOOOOOOHHHHHHHNNNNNNHOOOOK........", "........KOOOOKOOOOOOOHHHHHHNNGGGBBNHOOOK........", "........KOOOOHKOOOOOOHHHHHHNNGGGBBNHOOOK........", "........KTTTTHSKOOOOHWWHHHHHBBBBEEBHOOOK........", ".........KOOOHHSKOOWWWWWHHHHBEEEEAAHOOOK........", ".........KOOOOHSKWWWWWWWWHHHEEAAAAGHWWRRK.......", "..........KTTTTSKKWWWWWWWRRRHEAAAAGWWWWRRK......", "..........KOOOOHSK.KWWWWWRRRWWAAAAWWWWWWKK......", "...........KOOOOHSK.KWWWWWWWWWWWWWWWWWWWK.......", "...........KOOOOHSSK..KKWWWWWWWWWWWWWWKK........", "...........KOOOOOHSSK.KSSSSCCCCWWWWWWKK.........", "............KOOOOTTSSKKSOOOOOOOOWWWWWWWWK.......", "............KOOOOTTHSSKSOOOOOHHOWWWWWWWWWK......", ".............KOOOTTHSSSOOOOOHHOWWWWWWWWWK.......", ".............KSSSOOOOOOOOOOOOOWWWWWWWWWK........", "..............KKKKSSOOOOOOOOOOWWWWWWWWK.........", "..................KKDDDDKKKKKDDDDDDKK...........", "...................KDDDDDK..KDDDDDDK............", "...................KKKKKK...KKKKKKKK............", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "sit2": ["....KKKKK.......................................", "...KOOOOOK.......KKK...........KKK..............", "..KOOOOOOOK.....KOTOK.........KOTOK.............", "..KOOOKKKOK....KOOOTOK.......KOTOOOK............", "...KKK..KOOK...KOPPPTOK.....KOTPPPOK............", "........KTTK..KOPPPPPTOK...KOTPPPPPOK...........", ".......KOOOOK.KOPPPPPTOKKKKKOTPPPPPOK...........", ".......KOOOOK.KOOOWWWOOOTTTOOOWWWOOOK...........", "......KTTTTK..KOOOWWWOHYYYYYHOWWWOOOOK..........", "......KOOOOK.KOOOOOOOHYYYYYYYHOOOOOOOOK.........", ".......KOOOOKOOOOOOOOHHHHHHHHHYYHOOOOOK.........", ".......KTTTTKOOOOOOOOHHHHHHHSSSSSSHOOOOK........", "........KOOOOKOOOOOOOHHHHHHOOOOOOOHOOOK.........", "........KOOOOHKOOOOOOHHHHHHNNNNNNNHOOOK.........", "........KTTTTHSKOOOOHWWHHHHHBBBBEEBHOOOK........", ".........KOOOHHSKOOWWWWWHHHHBEEEEAAHOOOK........", ".........KOOOOHSKWWWWWWWWHHHEEAAAAGHWWRRK.......", "..........KTTTTSKKWWWWWWWRRRHEAAAAGWWWWRRK......", "..........KOOOOHSK.KWWWWWRRRWWAAAAWWWWWWKK......", "...........KOOOOHSK.KWWWWWWWWWWWWWWWWWWWK.......", "...........KOOOOHSSK..KKWWWWWWWWWWWWWWKK........", "...........KOOOOOHSSK.KSSSSCCCCWWWWWWKK.........", "............KOOOOTTSSKKSOOOOOOOOWWWWWWWWK.......", "............KOOOOTTHSSKSOOOOOHHOWWWWWWWWWK......", ".............KOOOTTHSSSOOOOOHHOWWWWWWWWWK.......", ".............KSSSOOOOOOOOOOOOOWWWWWWWWWK........", "..............KKKKSSOOOOOOOOOOWWWWWWWWK.........", "..................KKDDDDKKKKKDDDDDDKK...........", "...................KDDDDDK..KDDDDDDK............", "...................KKKKKK...KKKKKKKK............", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "sleep1": ["................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", ".................KKK...........KKK..............", "................KOTOK.........KOTOK.............", ".......KKKKKK..KOOOTOK.......KOTOOOK............", ".....KKOOOOOOKKOPPPTOK.....KOTPPPOK.............", "....KOOOOOOOOOKOPPPPPTOK...KOTPPPPPOK...........", "...KOOOOOHHHHHOKOPPPPPTOKKKKKOTPPPPPOK..........", "..KOOOOOHHHHHHHOKOOOWWWOOOTTTOOOWWWOOOK.........", ".KOOOOOHHHHHHHHHHOOOWWWOHYYYYYHOWWWOOOOK........", ".KOOOOHHHHHHTTTHHHHOOOOOHYYYYYYYHOOOOOOOK.......", "KSOOOOHHHHHHTTTTHHHHHHHHHHHSSSSSSHOOOOOOKKKKK...", ".KSOOOOOHHHHHHHSSSSOOOOOHNNNNNNHHOOOOORRKKOOOK..", "..KSOOOOOOHHHSSSSSSOOOWWHHHHHHHHWWWWWWRRKOOOOOK.", "..KSSOOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKOTTTTTOK", "...KSSOOOOOHSKKOOOOOKKWWWWWWRRRWWWWWWKKOOOOOOOOK", "...KSSSOOOOOHKOOOOOOOOKKKKKCCCCCCKKKKKOOOOOOOOOK", "....KSSSSOOOOKOOOOOHHHHHHHHOOOOOOHHWWWWOOOOOOOK.", ".....KKKSSSSOOOHHHHHHHHHHHHHHHHHHHOWWWWWOOOOOK..", "........KKKSSSSOOOOOOTTHHHHHHHHHOWWWWWWWWWWWK...", "...........KKKSSSSOOOTTOOOOOOOOHWWWWWWWWWWWK....", "..............KKKKSSSSOOOOOOOOOWWWWWWWWWWWK.....", "..................KKKKKKCCCCCCCWWWWWWWWWKK......", "........................KKKKKKKKKKKKKKKK........", "................................................", "................................................", "................................................"], "sleep2": ["................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", ".................KKK...........KKK..............", "................KOTOK.........KOTOK.............", ".......KKKKKK..KOOOTOK.......KOTOOOK............", ".....KKOOOOOOKKOPPPTOK.....KOTPPPOK.............", "....KOOOOOOOOOKOPPPPPTOK...KOTPPPPPOK...........", "...KOOOOOHHHHHOKOPPPPPTOKKKKKOTPPPPPOK..........", "..KOOOOOHHHHHHHOKOOOWWWOOOTTTOOOWWWOOOK.........", ".KOOOOOHHHHHHHHHHOOOWWWOHYYYYYHOWWWOOOOK.KKKK...", "KSOOOOHHHHHHTTTHHHHOOOOOHYYYYYYYHOOOOOOOKKOOOK..", ".KSOOOOHHHHHHTTTTHHHHHHHHHHSSSSSSHOOOOOOKOOOOOK.", "..KSOOOOOHHHHHHSSSSOOOOOHNNNNNNHHOOOOORRKOTTTTTO", "..KSSOOOOOOHHSSSSSSOOOWWHHHHHHHHWWWWWWRRKOOOOOOO", "...KSSOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKOOOOOOOO", "...KSSSOOOOOHSKKOOOOKKWWWWWWRRRWWWWWWKKOOOOOOOOO", "....KSSSSOOOOHKOOOOOOOKKKKKCCCCCCKKKKKOOOOOOOOOK", ".....KKKSSSSOOOKOOOOHHHHHHHHOOOOOHHWWWWOOOOOOOK.", "........KKKSSSSOOHHHHHHHHHHHHHHHHOWWWWWOOOOOOK..", "...........KKKSSSSOOOOOTTHHHHHHHOWWWWWWWWWWWK...", "..............KKKKSSSSOTTOOOOOOOOWWWWWWWWWWK....", "..................KKKKKKCCCCCCCWWWWWWWWWKK......", "........................KKKKKKKKKKKKKKKK........", "................................................", "................................................", "................................................"], "jump1": ["...KKKKK........................................", "..KOOOOOK..........KKK...........KKK............", ".KOOOOOOOK........KOTOK.........KOTOK...........", ".KOOOKKKOK.......KOOOTOK.......KOTOOOK..........", "..KKK..KOOK.....KOPPPTOK.....KOTPPPOK...........", ".......KTTK....KOPPPPPTOK...KOTPPPPPOK..........", "......KOOOOK...KOPPPPPTOKKKKKOTPPPPPOK..........", "......KOOOOK...KOOOWWWOOOTTTOOOWWWOOOK..........", ".....KTTTTK....KOOOWWWOHYYYYYHOWWWOOOOK.........", ".....KOOOOK...KOOOOOOOHYYYYYYYHOOOOOOOOK........", ".....KOOOOK..KOOOOOOOOHHHHHHHHHYYHOOOOOK........", "......KTTTTK.KOOOOOOOHHHHHHHNNNNNNHOOOOK........", "......KOOOOK.KOOOOOOOHHHHHHNNGGGBBNHOOOK........", ".......KOOOOHKOOOOOOHHHHHHHNNGGGBBNHOOOK........", ".......KTTTTHSKOOOOOHWWHHHHHBBBBEEBHOOOK........", "........KOOOHHSKOOOWWWWWHHHHBEEEEAAHOOOK........", "........KOOOOHSKWWWWWWWWHHHHEEAAAAGHWWRRK.......", ".........KTTTTSKKWWWWWWWRRRHEAAAAGWWWWRRK.......", "..........KOOOOHSK.KWWWWWRRRWWAAAAWWWWWWKK......", "..........KOOOOOOK..KWWWWWWWWWWWWWWWWWWWWK......", "..........KOOOOOOOK..KKWWWWWWWWWWWWWWWWKK.......", "..........KOOOOOOOOK.KSSSSCCCCWWWWWWWWKK........", "...........KOOOOOTTSSKSOOOOOOOOWWWWWWWWWWK......", "...........KOOOOOTTHHHHHHOOOOTOOWWWWWWWWWWK.....", "............KOOOOOOOOOOOOOOOOTTOOWWWWWWWWWWK....", ".............KSSOOHHHHHHOOOOOOOOOWWWWWWWWWK.....", "..............KSSOOOOOOOOOOOOOOOOWWWWWWWWK......", ".............KDDKSSOOOOOOWWWWWWWWWWWWWK.........", "............KDDDDK.KKKKKCCCCWWWWCCCKDDK.........", "...........KDDDDDK......KKKKKKKKK..KDDDDK.......", "...........KKKKKK...................KKKKK.......", "................................................", "................................................", "................................................", "................................................", "................................................"], "dance1": ["...KKKKK........................................", "..KOOOOOK........KKK...........KKK..............", ".KOOOOOOOK......KOTOK.........KOTOK.............", ".KOOOKKKOK.....KOOOTOK.......KOTOOOK............", "..KKK..KOOK....KOPPPTOK.....KOTPPPOK............", ".......KTTK...KOPPPPPTOK...KOTPPPPPOK...........", "......KOOOOK..KOPPPPPTOKKKKKOTPPPPPOK...........", "......KOOOOK..KOOOWWWOOOTTTOOOWWWOOOK...........", ".....KTTTTK...KOOOWWWOHYYYYYHOWWWOOOOK..........", ".....KOOOOK..KOOOOOOOHYYYYYYYHOOOOOOOOK.........", ".....KOOOOK..KOOOOOOOOHHHHHHHHHYYHOOOOOK........", "......KTTTTK.KOOOOOOOHHHHHHHNNNNNNHOOOOK........", "......KOOOOK.KOOOOOOOHHHHHHNNHHHHHHNHOOOK.......", ".......KOOOOHKOOOOOOHHHHHHNHHHHHHHHNHHOOOK......", ".......KTTTTHSKOOOOOHWWHHHHNHHHHHHHHNHOOOK......", "........KOOOHHSKOOOWWWWWHHHHHHHHHHHHHWWRRK......", "........KOOOOHSKWWWWWWWWHHHRRRHHHHWWWWRRK.......", ".........KTTTTSKKWWWWWWWRRRRRRWWWWWWWWWWKK......", "..........KOOOOHSK.KWWWWWWWWWWWWWWWWWWWWK.......", "..........KOOOOOOK..KKWWWWWWWWWWWWWWWWKK........", "..........KOOOOOOOK...KSSSSCCCCWWWWWWKK..KKK....", "...........KOOOOOTTK.KSOOOOOOOOWWWWWWWK.KDDDK...", "...........KOOOOOTTHHHHHHOOOOOWWWWWWWKKDDDDK....", "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWDDK....", ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWKK.....", "..............KSSOOOOOOOOOOOOOWWWWWWWWWWKKK.....", "...............KSSOOOOOOWWWWWWWWWWWWWWKMMK......", "...............KDDK..KKKKCCCCWWWWCCCCKMMMK......", "..............KDDDDK.....KKKKKDDK....KKKK.......", ".............KDDDDDK........KDDDDK..............", ".............KKKKKK.........KKKKK...............", "................................................", "................................................", "................................................", "................................................", "................................................"], "dance2": ["....KKKKK.......................................", "...KOOOOOK........KKK...........KKK.............", "..KOOOOOOOK......KOTOK.........KOTOK............", "..KOOOKKKOK.....KOOOTOK.......KOTOOOK...........", "...KKK..KOOK....KOPPPTOK.....KOTPPPOK...........", "........KTTK...KOPPPPPTOK...KOTPPPPPOK..........", ".......KOOOOK..KOPPPPPTOKKKKKOTPPPPPOK..........", ".......KOOOOK..KOOOWWWOOOTTTOOOWWWOOOK..........", "......KTTTTK...KOOOWWWOHYYYYYHOWWWOOOOK.........", "......KOOOOK..KOOOOOOOHYYYYYYYHOOOOOOOOK........", "......KOOOOK..KOOOOOOOOHHHHHHHHHYYHOOOOOK.......", ".......KTTTTK.KOOOOOOOHHHHHHHNNNNNNHOOOOK.......", ".......KOOOOK.KOOOOOOOHHHHHHNNGGGBBNHOOOK.......", "........KOOOOHKOOOOOOHHHHHHHNNGGGBBNHOOOK.......", "........KTTTTHSKOOOOOHWWHHHHHBBBBEEBHOOOK.......", ".........KOOOHHSKOOOWWWWWHHHHBEEEEAAHOOOK.......", ".........KOOOOHSKWWWWWWWWHHHHEEAAAAGHWWRRK......", "..........KTTTTSKKWWWWWWWRRRHEAAAAGWWWWRRK......", "..........KOOOOHHSK.KWWWWWRRRWWAAAAWWWWWWKK.....", "..........KOOOOOHHSK..KWWWWWWWWWWWWWWWWWWWWK.KKK", "...........KOOOOHHSK...KKWWWWWWWWWWWWWWWWKKKDDDK", "...........KOOOOOHSSK..KSSSSCCCCWWWWWWWWKKKDDDDK", "...........KOOOOOTTSSKKSOOOOOOOOWWWWWWWWWKKDDDDK", "............KOOOOTTHHHHHOOOOOOOOWWWWWWWWWWWWWKK.", "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWKK....", ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWK......", "..............KSSOOOOOOOOOOOOOWWWWWWWWWWK.......", "...............KSSOOOOOOWWWWWWWWWWWWWWWK........", "..............KMMK..KKKKCCCCWWWWCCCKDDK.........", ".............KMMMK......KKKKKKKKK..KDDDDK.......", ".............KKKK..................KKKKK........", "................................................", "................................................", "................................................", "................................................", "................................................"]}, "chillet": {"walk1": [".........KKKKKK.........KKKKKK..................", ".......KKDDDDDDK......KKDDDDDDK.................", "......KDDDDGDDDDK....KDDDDGDDDDK................", ".....KDDDDGGGDDDDK..KDDDDGGGDDDDK...............", ".....KDDDDGDDDDDOOK.KDDDDGDDDDDOOK..............", "......KKDDDDDOOOOOOKKKDDDDDOOOOOOK..............", "........KKKKKOOOOOOOHYYYYHOOOOOOOK..............", "............KOOOOOOOHYYYYYYHOOOOOOK.............", "...........KOOOOOOOOHHHHHHHHHYYHOOOOK...........", "..........KOOOOOOOOOHHHHHHHNNNNNNHOOOK..........", ".KKKKKK...KOOOOOOOOOHHHHHHNNGGGBBNHOOOK.........", "KDDDDDDK..KOOOOOOOOOHHHHHHNNGGGBBNHOOOK.........", "KDDDGDDDK.KOOOOOOOOOHHHHHHHBBBBEEBHOOOK.........", "KDDGGGDDDK.KOOOOOOOOOHHHHHHBEEEEAAHOOOK.........", "KDDDGDDDDK..KOOOOOOOOHHHHHHEEAAAAGHWWONK........", ".KDDDDDDDK...KOOOOOOOOHHRRRHEAAAAGWWWWONK.......", "..KKDDDDDOK..KDDDDDDDDDDRRRWWWWWWWWWWWWKK.......", "....KKDDDOOKKDDDDDDDDDDDDDDDWWWWWWWWWK..........", ".....KOOOOOOOKPPPPPPPPPPPPPWWWWWWWWK............", "......KOOOOOOOHHHHHHHHHHHHWWWWWWWWK.............", ".......KOOOOOOHHHHHHHHHHHWWWWWWWWK..............", ".......KOOOOOOTTOOOOOOOOTTOWWWWWWWK.............", "........KOOOOOTTOOOOOOOOTTOWWWWWWWK.............", "........KOOOOOOOOOOOOOOOOOOWWWWWWWK.............", ".........KSSOOHHHHHHHHHHOOOWWWWWWWK.............", "..........KSSWWWWWWWWWWWWWWWWWWWWK..............", "...........KKCCCCCCCCCCCCCCCCCCCK...............", "............KWWK.KCCK.....KWWK.KCCK.............", "...........KWWWWKKCCK....KWWWWKKCCK.............", "...........KKKKK.KKKK....KKKKK.KKKK.............", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "walk2": [".........KKKKKK.........KKKKKK..................", ".......KKDDDDDDK......KKDDDDDDK.................", "......KDDDDGDDDDK....KDDDDGDDDDK................", ".....KDDDDGGGDDDDK..KDDDDGGGDDDDK...............", ".....KDDDDGDDDDDOOK.KDDDDGDDDDDOOK..............", "......KKDDDDDOOOOOOKKKDDDDDOOOOOOK..............", "........KKKKKOOOOOOOHYYYYHOOOOOOOK..............", "............KOOOOOOOHYYYYYYHOOOOOOK.............", "...........KOOOOOOOOHHHHHHHHHYYHOOOOK...........", ".KKKKKK...KOOOOOOOOOHHHHHHHNNNNNNHOOOK..........", "KDDDDDDK..KOOOOOOOOOHHHHHHNNGGGBBNHOOOK.........", "KDDDGDDDK.KOOOOOOOOOHHHHHHNNGGGBBNHOOOK.........", "KDDGGGDDDK.KOOOOOOOOOHHHHHHHBBBBEEBHOOOK........", "KDDDGDDDDK..KOOOOOOOOHHHHHHBEEEEAAHOOOK.........", ".KDDDDDDDK..KOOOOOOOOHHHHHHEEAAAAGHWWONK........", "..KKDDDDDOK..KOOOOOOOOHHRRRHEAAAAGWWWWONK.......", "....KKDDDOOK.KDDDDDDDDDDRRRWWWWWWWWWWWWKK.......", ".....KOOOOOOKKDDDDDDDDDDDDDDDWWWWWWWWWK.........", "......KOOOOOOOKPPPPPPPPPPPPPWWWWWWWWK...........", ".......KOOOOOOOHHHHHHHHHHHHWWWWWWWWK............", ".......KOOOOOOHHHHHHHHHHHWWWWWWWWK..............", "........KOOOOOTTOOOOOOOOTTOWWWWWWWK.............", "........KOOOOOTTOOOOOOOOTTOWWWWWWWK.............", ".........KOOOOOOOOOOOOOOOOOWWWWWWWK.............", ".........KSSOOHHHHHHHHHHOOOWWWWWWWK.............", "..........KSSWWWWWWWWWWWWWWWWWWWWK..............", "...........KKCCCCCCCCCCCCCCCCCCCK...............", ".............KWWKKCCK......KWWKKCCK.............", ".............KWWWKCCK......KWWWKCCK.............", ".............KKKKKKKK......KKKKKKKK.............", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "walk3": [".........KKKKKK.........KKKKKK..................", ".......KKDDDDDDK......KKDDDDDDK.................", "......KDDDDGDDDDK....KDDDDGDDDDK................", ".....KDDDDGGGDDDDK..KDDDDGGGDDDDK...............", ".....KDDDDGDDDDDOOK.KDDDDGDDDDDOOK..............", "......KKDDDDDOOOOOOKKKDDDDDOOOOOOK..............", "........KKKKKOOOOOOOHYYYYHOOOOOOOK..............", "............KOOOOOOOHYYYYYYHOOOOOOK.............", "...........KOOOOOOOOHHHHHHHHHYYHOOOOK...........", "..........KOOOOOOOOOHHHHHHHNNNNNNHOOOK..........", ".KKKKKK...KOOOOOOOOOHHHHHHNNGGGBBNHOOOK.........", "KDDDDDDK..KOOOOOOOOOHHHHHHNNGGGBBNHOOOK.........", "KDDDGDDDK.KOOOOOOOOOHHHHHHHBBBBEEBHOOOK.........", "KDDGGGDDDK.KOOOOOOOOOHHHHHHBEEEEAAHOOOK.........", "KDDDGDDDDK..KOOOOOOOOHHHHHHEEAAAAGHWWONK........", ".KDDDDDDDK...KOOOOOOOOHHRRRHEAAAAGWWWWONK.......", "..KKDDDDDOK..KDDDDDDDDDDRRRWWWWWWWWWWWWKK.......", "....KKDDDOOKKDDDDDDDDDDDDDDDWWWWWWWWWK..........", ".....KOOOOOOOKPPPPPPPPPPPPPWWWWWWWWK............", "......KOOOOOOOHHHHHHHHHHHHWWWWWWWWK.............", ".......KOOOOOOHHHHHHHHHHHWWWWWWWWK..............", ".......KOOOOOOTTOOOOOOOOTTOWWWWWWWK.............", "........KOOOOOTTOOOOOOOOTTOWWWWWWWK.............", "........KOOOOOOOOOOOOOOOOOOWWWWWWWK.............", ".........KSSOOHHHHHHHHHHOOOWWWWWWWK.............", "..........KSSWWWWWWWWWWWWWWWWWWWWK..............", "...........KKCCCCCCCCCCCCCCCCCCCK...............", "............KCCK.KWWK.....KCCK.KWWK.............", "...........KCCCKKWWWWK...KCCCKKWWWWK............", "...........KKKK..KKKKK...KKKK..KKKKK............", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "sit1": ["............KKKKKK.......KKKKKK.................", "..........KKDDDDDDK....KKDDDDDDK................", ".........KDDDDGDDDDK..KDDDDGDDDDK...............", "........KDDDDGGGDDDDKKDDDDGGGDDDDK..............", "........KDDDDDDDDDOOKKDDDDDDDDDOOK..............", ".........KKDDDDDOOOOOKKDDDDDOOOOOK..............", "...........KKKKKOOOOOOHYYYYHOOOOOOK.............", "...............KOOOOOOHYYYYYYHOOOOOOK...........", "..............KOOOOOOOOHHHHHHHHYYHOOOOK.........", ".............KOOOOOOOOOHHHHHHNNNNNNHOOOK........", ".............KOOOOOOOOOHHHHHNNGGGBBNHOOOK.......", ".............KOOOOOOOOOHHHHHNNGGGBBNHOOOK.......", ".............KOOOOOOOOOHHHHHHBBBBEEBHOOOK.......", "..............KOOOOOOOOOHHHHHBEEEEAAHOOOK.......", "...............KOOOOOOOOHHHHHEEAAAAGHWWONK......", "....KKKKKK......KOOOOOOOOHRRRHEAAAAGWWWWONK.....", "..KKDDDDDDK.....KDDDDDDDDDRRRWWWWWWWWWWWWKK.....", ".KDDDDGDDDDK...KDDDDDDDDDDDDDDWWWWWWWWWK........", ".KDDDGGGDDDK...KPPPPPPPPPPPPPWWWWWWWWK..........", ".KDDDDGDDDDK...KOOOOOOHHHHHHWWWWWWWWWWK.........", "..KDDDDDDDOK..KOOOOOOTTOOOOOOWWWWWWWWWK.........", "...KKDDDDOOOK.KOOOOOOTTOOOOOOWWWWWWWWWK.........", ".....KKOOOOOOKKOOOOOOOOOOOOOOWWWWWWWWWK.........", ".......KOOOOOOHHHHHHHHHHHHHHOWWWWWWWWK..........", "........KSSOOOOOOOOOOOOOOOOOOWWWWWWWK...........", ".........KSSWWWWWWWWWWWWWWWWWWWWWWWK............", "..........KKKWWWWKKKKCCCCCCCWWWWKKK.............", "............KWWWWK........KWWWWK................", "............KKKKKK........KKKKKK................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "sit2": ["............KKKKKK.......KKKKKK.................", "..........KKDDDDDDK....KKDDDDDDK................", ".........KDDDDGDDDDK..KDDDDGDDDDK...............", "........KDDDDGGGDDDDKKDDDDGGGDDDDK..............", "........KDDDDDDDDDOOKKDDDDDDDDDOOK..............", ".........KKDDDDDOOOOOKKDDDDDOOOOOK..............", "...........KKKKKOOOOOOHYYYYHOOOOOOK.............", "...............KOOOOOOHYYYYYYHOOOOOOK...........", "..............KOOOOOOOOHHHHHHHHYYHOOOOK.........", ".............KOOOOOOOOOHHHHHHSSSSSSHOOOK........", ".............KOOOOOOOOOHHHHHHOOOOOOOHOOOK.......", ".............KOOOOOOOOOHHHHHHNNNNNNNHOOOK.......", ".............KOOOOOOOOOHHHHHHBBBBEEBHOOOK.......", "..............KOOOOOOOOOHHHHHBEEEEAAHOOOK.......", "...KKKKKK......KOOOOOOOOHHHHHEEAAAAGHWWONK......", ".KKDDDDDDK......KOOOOOOOOHRRRHEAAAAGWWWWONK.....", "KDDDDGDDDDK.....KDDDDDDDDDRRRWWWWWWWWWWWWKK.....", "KDDDGGGDDDK....KDDDDDDDDDDDDDDWWWWWWWWWK........", "KDDDDGDDDDK....KPPPPPPPPPPPPPWWWWWWWWK..........", ".KDDDDDDDOK....KOOOOOOHHHHHHWWWWWWWWWWK.........", "..KKDDDDOOOK..KOOOOOOTTOOOOOOWWWWWWWWWK.........", "....KKOOOOOOK.KOOOOOOTTOOOOOOWWWWWWWWWK.........", "......KOOOOOOKKOOOOOOOOOOOOOOWWWWWWWWWK.........", ".......KOOOOOOHHHHHHHHHHHHHHOWWWWWWWWK..........", "........KSSOOOOOOOOOOOOOOOOOOWWWWWWWK...........", ".........KSSWWWWWWWWWWWWWWWWWWWWWWWK............", "..........KKKWWWWKKKKCCCCCCCWWWWKKK.............", "............KWWWWK........KWWWWK................", "............KKKKKK........KKKKKK................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "sleep1": ["................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", ".............KKKKKK.......KKKKKK................", "...........KKDDDDDDK....KKDDDDDDK...............", "..........KDDDDGDDDDK..KDDDDGDDDDK..............", ".........KDDDDGGGDDDDKKDDDDGGGDDDDK.............", "......KKKKDDDDDDDDDOOKKDDDDDDDDDOOK.............", "....KKOOOOOKKDDDDDOOOOOKKDDDDDOOOOOK............", "...KOOOOOOOOKKKKKOOOOOOHYYYYHOOOOOOK............", "..KOOOOOHHHHHHHHHOOOOOOHYYYYYYHOOOOOOK..........", ".KOOOOOHHHHHHHHHHHHHHHHSSSSSSHOOOOOOK..KKKKK....", ".KOOOOHHHHHHTTTOOOOOOOHNNNNNNHHOOOOONKKDDDDDK...", "KSOOOOHHHHHHTTTTOOOOOHHHHHHHHHWWWWWWNNKDDGDDDK..", ".KSOOOOOHHHHHHHDDDDDDDDRRRWWWWWWWWWKKDDDGGGDDK..", "..KSOOOOOOHHHDDDDDDDDDDDRRRWWWWWWWKKKDDDDGDDDDK.", "..KSSOOOOOOHKPPPPPPPPPPPWWWWWWWWKKWWWWDDDDDDDK..", "...KSSOOOOOHKOOOOOOOOOOOOHHHHHHHWWWWWWWWDDDDK...", "...KSSSOOOOOKOOOOOOTTOOOOOOOOOOOWWWWWWWWWKKK....", "....KSSSSOOOOHHHHHHTTOOOOOOOOOOWWWWWWWWWWK......", ".....KKKSSSSOOOOOOOOOOOOOOOOOOOWWWWWWWWWK.......", "........KKKSSSSWWWWWWWWWWWWWWWWWWWWWWWWK........", "...........KKKKCCCCCCCCCCCCCCCCCCCCCCKK.........", "...............KKKKKKKKKKKKKKKKKKKKKK...........", "................................................", "................................................", "................................................", "................................................", "................................................"], "sleep2": ["................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", ".............KKKKKK.......KKKKKK................", "...........KKDDDDDDK....KKDDDDDDK...............", "..........KDDDDGDDDDK..KDDDDGDDDDK..............", "......KKKKDDDDGGGDDDDKKDDDDGGGDDDDK.............", "....KKOOOOKDDDDDDDDDOOKKDDDDDDDDDOOK............", "...KOOOOOOOOKKDDDDDOOOOOKKDDDDDOOOOOK...........", "..KOOOOOHHHHHHKKKKKOOOOOOHYYYYHOOOOOOK..........", ".KOOOOOHHHHHHHHHHHHOOOOOOHYYYYYYHOOOOOOK.KKKKK..", "KSOOOOHHHHHHTTTOOOOOOOOOHSSSSSSHOOOOOOKKKDDDDDK.", ".KSOOOOHHHHHHTTTTOOOOOOHNNNNNNHHOOOOONNKDDGDDDK.", "..KSOOOOOHHHHHHHDDDDDDDDRRRWWWWWWWWWKKDDDGGGDDK.", "..KSSOOOOOOHHHDDDDDDDDDDRRRWWWWWWWKKKDDDDGDDDDK.", "...KSSOOOOOHKPPPPPPPPPPPWWWWWWWWKKWWWWDDDDDDDK..", "...KSSSOOOOOHKOOOOOOOOOOHHHHHHHWWWWWWWWDDDDK....", "....KSSSSOOOOKOOOOOTTOOOOOOOOOOWWWWWWWWWKKK.....", ".....KKKSSSSOOHHHHHTTOOOOOOOOOWWWWWWWWWWK.......", "........KKKSSSSOOOOOOOOOOOOOOOWWWWWWWWWK........", "...........KKKSSSSWWWWWWWWWWWWWWWWWWWWK.........", "..............KKKKCCCCCCCCCCCCCCCCCCCKK.........", "..................KKKKKKKKKKKKKKKKKKKK..........", "................................................", "................................................", "................................................", "................................................", "................................................"], "jump1": ["...........KKKKKK.........KKKKKK................", ".........KKDDDDDDK......KKDDDDDDK...............", "........KDDDDGDDDDK....KDDDDGDDDDK..............", ".......KDDDDGGGDDDDK..KDDDDGGGDDDDK.............", ".......KDDDDGDDDDDOOK.KDDDDGDDDDDOOK............", "........KKDDDDDOOOOOOKKKDDDDDOOOOOOK............", ".KKKKKK...KKKKKOOOOOOOHYYYYHOOOOOOOK............", "KDDDDDDK......KOOOOOOOHYYYYYYHOOOOOOK...........", "KDDDGDDDK....KOOOOOOOOHHHHHHHHHYYHOOOOK.........", "KDDGGGDDDK..KOOOOOOOOOHHHHHHHNNNNNNHOOOK........", "KDDDGDDDDK..KOOOOOOOOOHHHHHHNNGGGBBNHOOOK.......", ".KDDDDDDDK..KOOOOOOOOOHHHHHHNNGGGBBNHOOOK.......", "..KKDDDDDOK.KOOOOOOOOOHHHHHHHBBBBEEBHOOOK.......", "....KKDDDOOK.KOOOOOOOOOHHHHHHBEEEEAAHOOOK.......", ".....KOOOOOOK.KOOOOOOOOHHHHHHEEAAAAGHWWONK......", "......KOOOOOOK.KOOOOOOOOHHRRRHEAAAAGWWWWONK.....", ".......KOOOOOOKKDDDDDDDDDDRRRWWWWWWWWWWWWKK.....", "........KOOOOOOKDDDDDDDDDDDDDDDWWWWWWWWWK.......", ".........KOOOOOOKPPPPPPPPPPPPPWWWWWWWWK.........", ".........KOOOOOOOHHHHHHHHHHHHWWWWWWWWK..........", "..........KOOOOOOTTOOOOOOOOTTOWWWWWWWK..........", "..........KOOOOOOTTOOOOOOOOTTOWWWWWWWK..........", "...........KOOOOOOOOOOOOOOOOOOWWWWWWWK..........", "............KSSOOHHHHHHHHHHOOOWWWWWWWK..........", ".............KSSWWWWWWWWWWWWWWWWWWWWK...........", "............KWWKCCCCCCCCCCCCCCCCCKWWK...........", "...........KWWWWK.KKKKKKKKKKKKK..KWWWWK.........", "...........KKKKK..................KKKKK.........", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "dance1": ["...........KKKKKK.........KKKKKK................", ".........KKDDDDDDK......KKDDDDDDK...............", "........KDDDDGDDDDK....KDDDDGDDDDK..............", ".......KDDDDGGGDDDDK..KDDDDGGGDDDDK.............", ".......KDDDDGDDDDDOOK.KDDDDGDDDDDOOK............", "........KKDDDDDOOOOOOKKKDDDDDOOOOOOK............", ".KKKKKK...KKKKKOOOOOOOHYYYYHOOOOOOOK............", "KDDDDDDK......KOOOOOOOHYYYYYYHOOOOOOK...........", "KDDDGDDDK....KOOOOOOOOHHHHHHHHHYYHOOOOK.........", "KDDGGGDDDK..KOOOOOOOOOHHHHHHHNNNNNNHOOOK........", "KDDDGDDDDK..KOOOOOOOOOHHHHHHNNHHHHHHNHOOOK......", ".KDDDDDDDK..KOOOOOOOOOHHHHHNHHHHHHHHNHHOOOK.....", "..KKDDDDDOK.KOOOOOOOOOHHHHHNHHHHHHHHNHOOOK......", "....KKDDDOOK.KOOOOOOOOOHHHHHHHHHHHHHHWWONK......", ".....KOOOOOOK.KOOOOOOOOHHHRRRHHHHWWWWWWONK......", "......KOOOOOOK.KOOOOOOOOHRRRRRRWWWWWWWWWWKK.....", ".......KOOOOOOKKDDDDDDDDDDWWWWWWWWWWWWWWK.......", "........KOOOOOOKDDDDDDDDDDDDDDDWWWWWWWK.........", ".........KOOOOOOKPPPPPPPPPPPPPWWWWWWWK...KKK....", ".........KOOOOOOOHHHHHHHHHHHHWWWWWWWWK..KWWWK...", "..........KOOOOOOTTOOOOOOOOTTOWWWWWWWK.KWWWWK...", "..........KOOOOOOTTOOOOOOOOTTOWWWWWWWWKKWWWK....", "...........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWKK.....", "............KSSOOHHHHHHHHHHOOOWWWWWWWWWWKK......", ".............KSSWWWWWWWWWWWWWWWWWWWWWWWK........", ".............KWWK.KKCCCCCCCCCCCCCCCCKCCK........", "............KWWWWK....KKKKKKKKKKKK..KCCCK.......", "............KKKKK...................KKKK........", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"], "dance2": ["............KKKKKK.........KKKKKK...............", "..........KKDDDDDDK......KKDDDDDDK..............", ".........KDDDDGDDDDK....KDDDDGDDDDK.............", "........KDDDDGGGDDDDK..KDDDDGGGDDDDK............", "........KDDDDGDDDDDOOK.KDDDDGDDDDDOOK...........", ".........KKDDDDDOOOOOOKKKDDDDDOOOOOOK...........", "...........KKKKKOOOOOOOHYYYYHOOOOOOOK...........", "..KKKKKK.......KOOOOOOOHYYYYYYHOOOOOOK..........", ".KDDDDDDK.....KOOOOOOOOHHHHHHHHHYYHOOOOK........", "KDDDGDDDK....KOOOOOOOOOHHHHHHHNNNNNNHOOOK.......", "KDDGGGDDDK...KOOOOOOOOOHHHHHHNNGGGBBNHOOOK......", "KDDDGDDDDK...KOOOOOOOOOHHHHHHNNGGGBBNHOOOK......", ".KDDDDDDDK...KOOOOOOOOOHHHHHHHBBBBEEBHOOOK......", "..KKDDDDDOK...KOOOOOOOOOHHHHHHBEEEEAAHOOOK......", "....KKDDDOOK...KOOOOOOOOHHHHHHEEAAAAGHWWONK.....", ".....KOOOOOOK...KOOOOOOOOHHRRRHEAAAAGWWWWONK....", "......KOOOOOOK..KDDDDDDDDDDRRRWWWWWWWWWWWWKK....", ".......KOOOOOOK.KDDDDDDDDDDDDDDDWWWWWWWWWK......", "........KOOOOOOK.KPPPPPPPPPPPPPWWWWWWWWK....KKK.", "........KOOOOOOOHHHHHHHHHHHHHHWWWWWWWWK....KWWWK", ".........KOOOOOOTTOOOOOOOOTTOWWWWWWWWWK...KWWWWK", ".........KOOOOOOTTOOOOOOOOTTOWWWWWWWWWWKKKWWWWK.", "..........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWWWWWKK..", "...........KSSOOHHHHHHHHHHOOOWWWWWWWWWWWWWKK....", "............KSSWWWWWWWWWWWWWWWWWWWWWWWWWK.......", "............KCCK..KKCCCCCCCCCCCCCCCCKWWK........", "...........KCCCK......KKKKKKKKKKKK..KWWWWK......", "...........KKKK.....................KKKKK.......", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................", "................................................"]}};
+      const BEAR_PALETTE = {"K": "#23192d", "N": "#120c1c", "D": "#3d2214", "M": "#29150c", "S": "#5e361e", "O": "#85502e", "H": "#a66a43", "Y": "#c98d63", "W": "#fff3e0", "C": "#e6cfb3", "P": "#ff9ebb", "R": "#ff7597", "B": "#0e2f70", "E": "#1f7ae0", "A": "#66ecff", "G": "#ffffff"};
+      const BUTTERFLY_1 = ["..KKKK....KKKK..", ".KAAAAK..KAAAAK.", "KAAAGGAKKAGGAAAK", "KAAGGGAKKAGGGAAK", "KAAAGVVKKVVGAAAK", ".KAAVVVKKVVVAAK.", "..KKKKKNNKKKKK..", "..KVVVVNNVVVVK..", ".KVVYYYNNYYYVVK.", ".KVVYYYNNYYYVVK.", "..KVVVVKKVVVVK..", "...KKKK..KKKK...", "................", "................"];
+      const BUTTERFLY_2 = [".....KKKKKK.....", "....KAAAAAAK....", "...KAAAGGAAAK...", "...KAAGGGAAAK...", "....KAAVVAAK....", "....KVVNNVVK....", ".....KNNNNK.....", "....KVVNNVVK....", "....KVYNNYVK....", ".....KVKKVK.....", "......KKKK......", "................", "................", "................"];
+      const BALL_1 = ["....KKKKKK....", "..KKZZZZZZKK..", ".KZZZGGGGZZZK.", ".KZZGGGGZZZZK.", "KZZZZGGWWWWWWK", "KZZZZWWWWWWWWK", "KZZWWWWYYYYWWK", "KWWWWYYYYYYYYK", "KWWYYYYYYYYYYK", "KYYYYYYYYZZZZK", ".KYYYYZZZZZZK.", ".KZZZZZZZZZZK.", "..KKZZZZZZKK..", "....KKKKKK...."];
+      const BALL_2 = ["....KKKKKK....", "..KKYYYYYYKK..", ".KYYYGGGGYYYK.", ".KYYGGGGYYYYK.", "KYYYYGGWWWWWWK", "KYYYYWWWWWWWWK", "KYYWWWWZZZZWWK", "KWWWWZZZZZZZZK", "KWWZZZZZZZZZZK", "KZZZZZZZZYYYYK", ".KZZZZYYYYYYK.", ".KYYYYYYYYYYK.", "..KKYYYYYYKK..", "....KKKKKK...."];
+      const BEAR_WALK_1 = ["................................................", "...............KKKKK.........KKKKK..............", ".............KKDOOOOKK.....KKDOOOOKK............", "............KDOOOOOOOOK...KDOOOOOOOOK...........", "............KDOOPPPPOODK.KDOOPPPPOODK...........", "............KDOOPWWPOODK.KDOOPWWPOODK...........", "............KDOOOOOOOODKKKDOOOOOOOODK...........", ".............KDOOOOOOHYYYYYHOOOOOODK............", "............KDOOOOOOHYYYYYYYHOOOOOODK...........", "...........KOOOOOOOOHHHHHHHHHYYHOOOOOK..........", "..........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK.........", ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........", ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........", "........KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.......", "........KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.......", "........KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK......", "........KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK......", ".........KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK......", ".........KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.......", "..........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK.........", "...........KSSSOOOOOOOOOOOOOSSSSKKKK............", ".........KKKKKSSSSOOOOOOOOOOOOOOOWWWWK..........", "........KOOOOKSOOOOOOOOOOOOOOOOOWWWWWWK.........", ".......KOOOOOHKSOOOOOHHHHHHOOOOOOWWWWWWWK.......", ".......KOOOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......", "........KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......", "..........KKKKSSSSOOHHHHHHOOOOOOWWWWWWWWK.......", "..........KSSSSSSSOOOOOOOOOOOOOWWWWWWWK.........", "...........KSSSSSOOOOOOOOOWWWWWWWWWWK...........", "...........KDDK.KMMKKOOOOCCCCWWWWCK.............", "..........KDDDDKKMMK.KKKKKDDK.KMMK..............", "..........KKKKK.KKKK.....KDDDDKKKK..............", ".........................KKKKK..................", "................................................", "................................................", "................................................"];
+      const BEAR_WALK_2 = ["................................................", "...............KKKKK.........KKKKK..............", ".............KKDOOOOKK.....KKDOOOOKK............", "............KDOOOOOOOOK...KDOOOOOOOOK...........", "............KDOOPPPPOODK.KDOOPPPPOODK...........", "............KDOOPWWPOODK.KDOOPWWPOODK...........", "............KDOOOOOOOODKKKDOOOOOOOODK...........", ".............KDOOOOOOHYYYYYHOOOOOODK............", "............KDOOOOOOHYYYYYYYHOOOOOODK...........", "...........KOOOOOOOOHHHHHHHHHYYHOOOOOK..........", "..........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK.........", ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........", ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........", "........KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.......", "........KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.......", "........KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK......", "........KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK......", ".........KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK......", ".........KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.......", "..........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK.........", ".........KKKKKSSSOOOOOOOOOOOSSSSKKKK............", "........KOOOOKSSSSOOOOOOOOOOOOOOOWWWWK..........", ".......KOOOOOHKSOOOOOOOOOOOOOOOOOWWWWWWK........", ".......KOOOOOOKSOOOOOHHHHHHOOOOOOWWWWWWWK.......", "........KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......", "..........KKKKKOOOOOOOOOOOOOOOOWWWWWWWWWK.......", "..........KSSSSSSSOOHHHHHHOOOOOOWWWWWWWWK.......", "..........KSSSSSSSOOOOOOOOOOOOOWWWWWWWK.........", "...........KSSSSSOOOOOOOOOWWWWWWWWWWK...........", "............KDDKKMMKKOOOOCCCCWWWWCK.............", "............KDDDKMMK.KKKKKDDK.KMMK..............", "............KKKKKKKK.....KDDDKKKK...............", ".........................KKKK...................", "................................................", "................................................", "................................................"];
+      const BEAR_WALK_3 = ["................................................", "...............KKKKK.........KKKKK..............", ".............KKDOOOOKK.....KKDOOOOKK............", "............KDOOOOOOOOK...KDOOOOOOOOK...........", "............KDOOPPPPOODK.KDOOPPPPOODK...........", "............KDOOPWWPOODK.KDOOPWWPOODK...........", "............KDOOOOOOOODKKKDOOOOOOOODK...........", ".............KDOOOOOOHYYYYYHOOOOOODK............", "............KDOOOOOOHYYYYYYYHOOOOOODK...........", "...........KOOOOOOOOHHHHHHHHHYYHOOOOOK..........", "..........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK.........", ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........", ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........", "........KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.......", "........KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.......", "........KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK......", "........KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK......", ".........KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK......", ".........KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.......", "..........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK.........", "...........KSSSOOOOOOOOOOOOOSSSSKKKK............", ".........KKKKKSSSSOOOOOOOOOOOOOOOWWWWK..........", "........KOOOOKSOOOOOOOOOOOOOOOOOWWWWWWK.........", ".......KOOOOOHKSOOOOOHHHHHHOOOOOOWWWWWWWK.......", ".......KOOOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......", "........KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......", "..........KKKKSSSSOOHHHHHHOOOOOOWWWWWWWWK.......", "..........KSSSSSSSOOOOOOOOOOOOOWWWWWWWK.........", "...........KSSSSSOOOOOOOOOWWWWWWWWWWK...........", "...........KMMK.KDDKKOOOOCCCCWWWWCK.............", "..........KMMMK.KDDDKKKKKKMMK.KDDK..............", "..........KKKK..KKKKK....KMMMKKKKDK.............", ".........................KKKK.KKKK..............", "................................................", "................................................", "................................................"];
+      const BEAR_WAVE_1 = ["................................................", ".............KKKKK.........KKKKK................", "...........KKDOOOOKK.....KKDOOOOKK..............", "..........KDOOOOOOOOK...KDOOOOOOOOK.............", "..........KDOOPPPPOODK.KDOOPPPPOODK.............", "..........KDOOPWWPOODK.KDOOPWWPOODK.............", "..........KDOOOOOOOODKKKDOOOOOOOODK.............", "...........KDOOOOOOHYYYYYHOOOOOODK..............", "..........KDOOOOOOHYYYYYYYHOOOOOODK.............", ".........KOOOOOOOOHHHHHHHHHYYHOOOOOK............", "........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK...........", ".......KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK..........", ".......KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK..........", "......KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.........", "......KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.........", "......KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK........", "......KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK........", ".......KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK.KKKK...", ".......KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.KDDDDK..", "........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK..KDOOOOOK.", ".........KSSSOOOOOOOOOOOOOSSSSKKKK....KOOOOOOOK.", ".......KKKKKSSSSOOOOOOOOOOOOOOOWWWWK.KOOOOOOOK..", "......KOOOOKSOOOOOOOOOOOOOOOOOWWWWWWKOOOOOOOK...", ".....KOOOOOHKSOOOOOHHHHHHOOOOOOWWWWWWWOOOOOK....", ".....KOOOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWKKKKK.....", "......KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.........", "........KKKKSSSSOOHHHHHHOOOOOOWWWWWWWWK.........", "........KSSSSSSSOOOOOOOOOOOOOWWWWWWWWK..........", ".........KSSSSSOOOOOOOOOWWWWWWWWWWWWK...........", ".........KKKKDDDDKKKKKKOOOOCCCCWWWWCK...........", ".............KDDDDDK...KKKKDDDDDDKKK............", ".............KKKKKK........KKKKKK...............", "................................................", "................................................", "................................................", "................................................"];
+      const BEAR_WAVE_2 = ["................................................", ".............KKKKK.........KKKKK................", "...........KKDOOOOKK.....KKDOOOOKK..............", "..........KDOOOOOOOOK...KDOOOOOOOOK.............", "..........KDOOPPPPOODK.KDOOPPPPOODK.............", "..........KDOOPWWPOODK.KDOOPWWPOODK.............", "..........KDOOOOOOOODKKKDOOOOOOOODK.............", "...........KDOOOOOOHYYYYYHOOOOOODK..............", "..........KDOOOOOOHYYYYYYYHOOOOOODK.............", ".........KOOOOOOOOHHHHHHHHHYYHOOOOOK............", "........KOOOOOOOOHHHHHHHSSSSSSHOOOOOK...........", ".......KOOOOOOOOHHHHHHHOOOOOOOHOOOOOOK..........", ".......KOOOOOOOOHHHHHHHNNNNNNNHOOOOOOK..........", "......KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.........", "......KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.........", "......KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK........", "......KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK........", ".......KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK........", ".......KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK...KKKK..", "........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK....KDDDDK.", ".......KKKKKSSSOOOOOOOOOOOSSSSKKKK......KDOOOOOK", "......KOOOOKSSSSOOOOOOOOOOOOOOOWWWWK...KOOOOOOOK", ".....KOOOOOHKSOOOOOOOOOOOOOOOOOWWWWWWK.KOOOOOOK.", ".....KOOOOOOKSOOOOOHHHHHHOOOOOOWWWWWWWKOOOOOOK..", "......KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWOOOOOK....", "........KKKKKOOOOOOOOOOOOOOOOWWWWWWWWWKKKKK.....", "........KSSSSSSSOOHHHHHHOOOOOOWWWWWWWWK.........", "........KSSSSSSSOOOOOOOOOOOOOWWWWWWWWK..........", ".........KSSSSSOOOOOOOOOWWWWWWWWWWWWK...........", ".........KKKKDDDDKKKKKKOOOOCCCCWWWWCK...........", ".............KDDDDDK...KKKKDDDDDDKKK............", ".............KKKKKK........KKKKKK...............", "................................................", "................................................", "................................................", "................................................"];
+
+      let currentSpecies = (params.get("pet") || localStorage.getItem("stream_companion_species") || "fox").toLowerCase();
+      if (!PALETTES[currentSpecies]) currentSpecies = "fox";
+
+      function getMeta(sp = currentSpecies) {
+        return SPECIES_META.find((m) => m.id === sp) || SPECIES_META[0];
       }
-
-      const FOX_PALETTE = {
-        ".": null,
-        "K": "#23192d", // Soft dark plum-charcoal outline
-        "N": "#120c1c", // Deepest lash & glossy button nose
-        "D": "#422518", // Rich cocoa ear tips & tiny paw boots
-        "M": "#2b160e", // Far-side shaded paw boot
-        "S": "#cf4a19", // Warm burnt-orange shading
-        "O": "#ff6b24", // Bright cheerful tangerine-fox orange
-        "H": "#ff993b", // Golden-apricot highlight
-        "Y": "#ffd07b", // Soft sunny crown & brow dot highlight
-        "W": "#fff8eb", // Fluffy warm milk-white fur
-        "C": "#ebd9c5", // Soft biscuit shadow on white fur
-        "P": "#ff9ebb", // Sweet pastel pink inner ear
-        "R": "#ff7597", // Rosy kawaii cheek blush
-        "B": "#0e2f70", // Deep starry navy upper iris
-        "E": "#1f7ae0", // Vibrant sky-sapphire mid iris
-        "A": "#66ecff", // Glowing crystal-aqua lower iris
-        "G": "#ffffff", // Pure white eye sparkle
-        "V": "#c77dff", // Butterfly lavender-violet
-        "Z": "#ff4d6d"  // Ball / Butterfly vibrant coral-red
-      };
-
-      const BEAR_PALETTE = {
-        ".": null,
-        "K": "#23192d", // Soft dark plum-charcoal outline
-        "N": "#120c1c", // Deepest lash & glossy button nose
-        "D": "#3d2214", // Dark espresso paw boots & ear rim
-        "M": "#29150c", // Far-side shaded paw
-        "S": "#5e361e", // Rich cocoa-brown shading
-        "O": "#85502e", // Warm cinnamon teddy-bear brown
-        "H": "#a66a43", // Soft honey-caramel highlight
-        "Y": "#c98d63", // Light golden-tan crown highlight
-        "W": "#fff3e0", // Creamy vanilla muzzle & round belly patch
-        "C": "#e6cfb3", // Soft latte shadow on cream fur
-        "P": "#ff9ebb", // Sweet pastel pink inner ear
-        "R": "#ff7597", // Rosy kawaii cheek blush
-        "B": "#0e2f70", // Deep starry navy upper iris
-        "E": "#1f7ae0", // Vibrant sky-sapphire mid iris
-        "A": "#66ecff", // Glowing crystal-aqua lower iris
-        "G": "#ffffff", // Pure white eye sparkle
-        "V": "#c77dff", // Butterfly lavender-violet
-        "Z": "#ff4d6d"  // Ball / Butterfly vibrant coral-red
-      };
-
-      const WALK_1 = [
-        ".................KK...........KK................",
-        "................KDDK.........KDDK...............",
-        "...............KDDDDK.......KDDDDK..............",
-        "...............KDDDDDK.....KDDDDDDK.............",
-        "..............KDDPPDDDK...KDDPPPDDK.............",
-        "..............KDDPPPPDOK.KDDPPPPDDK.............",
-        "....KKKKKK....KDPPPPPDOKKDPPPPPPDK..............",
-        "..KKWWWWWWKK..KDOOWWWOOOOOOWWWWODK..............",
-        ".KWWWWWWWWWWK.KDOOWWWWOHYYYYHOWWWOOOK...........",
-        "KWWWWWWWWWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........",
-        "KWWWWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK........",
-        "KWWWWWWWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK........",
-        "KWWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......",
-        "KWWWWWWWOHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......",
-        ".KWWWWWOHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......",
-        "..KWWWOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......",
-        "...KWOHHHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....",
-        "....KOOHHHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....",
-        ".....KOOOHHHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....",
-        "......KOOOHHHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......",
-        ".......KOOOHHHSSK...KKWWWWWWWWWWWWWWWWKK........",
-        "........KOOOHHSSK..KSSSSCCCCWWWWWWWWKK..........",
-        "........KOOOOHHSSKKSOOOOOOOOWWWWWWWWWWK.........",
-        ".........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWK........",
-        ".........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........",
-        "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........",
-        "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........",
-        "............KSSOOOOOOOOOOOOOWWWWWWWWK...........",
-        ".............KSSOOOOOOWWWWWWWWWWWWWK............",
-        ".............KDDK.KMMKKCCCCWWWWCCCK.............",
-        "............KDDDDKKMMK.KKKKDDK.KMMK.............",
-        "............KKKKK.KKKK....KDDDDKKKK.............",
-        "..........................KKKKK.................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const WALK_2 = [
-        ".................KK...........KK................",
-        "................KDDK.........KDDK...............",
-        "...............KDDDDK.......KDDDDK..............",
-        "...............KDDDDDK.....KDDDDDDK.............",
-        "..............KDDPPDDDK...KDDPPPDDK.............",
-        "....KKKKKK....KDDPPPPDOK.KDDPPPPDDK.............",
-        "..KKWWWWWWKK..KDPPPPPDOKKDPPPPPPDK..............",
-        ".KWWWWWWWWWWK.KDOOWWWOOOOOOWWWWODK..............",
-        "KWWWWWWWWWWWWKKDOOWWWWOHYYYYHOWWWOOOK...........",
-        "KWWWWWWWWWWWOHKDOOOOOOOHYYYYYYHOOOOOOK..........",
-        "KWWWWWWWWWWOHHSKOOOOOOOHHHHHHHHHYYHOOOOK........",
-        "KWWWWWWWWWOHHHSSKOOOOOHHHHHHHNNNNNNHOOOK........",
-        ".KWWWWWWOHHHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......",
-        "..KWWWWOHHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......",
-        "...KWWOHHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......",
-        "....KOOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......",
-        ".....KOOOHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....",
-        "......KOOOHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....",
-        ".......KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....",
-        "........KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......",
-        "........KOOOOHHSK...KKWWWWWWWWWWWWWWWWKK........",
-        ".........KOOOOHSK..KSSSSCCCCWWWWWWWWKK..........",
-        ".........KOOOOOOKKKSOOOOOOOOWWWWWWWWWWK.........",
-        ".........KOOOOOHHHHHOOOOOOOOWWWWWWWWWWWK........",
-        "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........",
-        "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........",
-        "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........",
-        "............KSSOOOOOOOOOOOOOWWWWWWWWK...........",
-        ".............KSSOOOOOOWWWWWWWWWWWWWK............",
-        "..............KDDKKMMKKCCCCWWWWCCCK.............",
-        "..............KDDDKMMK.KKKKDDK.KMMK.............",
-        "..............KKKKKKKK....KDDDKKKK..............",
-        "..........................KKKK..................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const WALK_3 = [
-        ".................KK...........KK................",
-        "................KDDK.........KDDK...............",
-        "...............KDDDDK.......KDDDDK..............",
-        "...............KDDDDDK.....KDDDDDDK.............",
-        "..............KDDPPDDDK...KDDPPPDDK.............",
-        "..............KDDPPPPDOK.KDDPPPPDDK.............",
-        "....KKKKKK....KDPPPPPDOKKDPPPPPPDK..............",
-        "..KKWWWWWWKK..KDOOWWWOOOOOOWWWWODK..............",
-        ".KWWWWWWWWWWK.KDOOWWWWOHYYYYHOWWWOOOK...........",
-        "KWWWWWWWWWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........",
-        "KWWWWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK........",
-        "KWWWWWWWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK........",
-        "KWWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......",
-        ".KWWWWWWOHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......",
-        "..KWWWWOHHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......",
-        "...KWWOHHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......",
-        "....KOOHHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....",
-        ".....KOOOHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....",
-        "......KOOOHHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK.....",
-        ".......KOOOHHHSSK..KWWWWWWWWWWWWWWWWWWWWK.......",
-        "........KOOOHHSSK...KKWWWWWWWWWWWWWWWWKK........",
-        "........KOOOOHHSK..KSSSSCCCCWWWWWWWWKK..........",
-        ".........KOOOOHSSKKSOOOOOOOOWWWWWWWWWWK.........",
-        ".........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWK........",
-        ".........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK........",
-        "..........KOOOOOOOOOOOOOOOOOWWWWWWWWWWK.........",
-        "...........KSSOOHHHHHHOOOOOOWWWWWWWWWK..........",
-        "............KSSOOOOOOOOOOOOOWWWWWWWWK...........",
-        ".............KSSOOOOOOWWWWWWWWWWWWWK............",
-        ".............KMMK.KDDKKCCCCWWWWCCCK.............",
-        "............KMMMK.KDDDKKKKKMMK.KDDK.............",
-        "............KKKK..KKKKK...KMMMKKKKDK............",
-        "..........................KKKK.KKKK.............",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const SIT_1 = [
-        "...............KK...........KK..................",
-        "..............KDDK.........KDDK.................",
-        ".............KDDDDK.......KDDDDK................",
-        ".............KDDDDDK.....KDDDDDDK...............",
-        "............KDDPPDDDK...KDDPPPDDK...............",
-        "............KDDPPPPDOK.KDDPPPPDDK...............",
-        "............KDPPPPPDOKKDPPPPPPDK................",
-        "............KDOOWWWOOOOOOWWWWODK................",
-        "............KDOOWWWWOHYYYYHOWWWOOOK.............",
-        "...KKKKKK..KDOOOOOOOHYYYYYYHOOOOOOK.............",
-        ".KKWWWWWWK.KOOOOOOOOHHHHHHHHHYYHOOOOK...........",
-        "KWWWWWWWWWKOOOOOOOOHHHHHHHNNNNNNHOOOK...........",
-        "KWWWWWWWWOHKOOOOOOHHHHHHHNNGGGBBNHOOOK..........",
-        "KWWWWWWWOHHSKOOOOOHHHHHHHNNGGGBBNHOOOK..........",
-        "KWWWWWWOHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK..........",
-        ".KWWWWOHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK..........",
-        "..KWWOHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK........",
-        "...KOOHHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK........",
-        "....KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK........",
-        ".....KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK..........",
-        "......KOOOHSSK...KKWWWWWWWWWWWWWWWWKK...........",
-        ".......KOOOHSSK..KSSSSCCCCWWWWWWWWKK............",
-        "........KOOOHSSKKSOOOOOOOOWWWWWWWWWWK...........",
-        ".........KOOOHSSKSOOOOOHHOWWWWWWWWWWWK..........",
-        "..........KOOOHSSSOOOOOHHOWWWWWWWWWWWK..........",
-        "...........KSSSOOOOOOOOOOOWWWWWWWWWWK...........",
-        "............KKKKSSOOOOOOOOWWWWWWWWWK............",
-        "................KKDDDDKKKKKDDDDDDK..............",
-        ".................KDDDDDK..KDDDDDDK..............",
-        ".................KKKKKK...KKKKKKKK..............",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const SIT_2 = [
-        "...............KK...........KK..................",
-        "..............KDDK.........KDDK.................",
-        ".............KDDDDK.......KDDDDK................",
-        ".............KDDDDDK.....KDDDDDDK...............",
-        "............KDDPPDDDK...KDDPPPDDK...............",
-        "............KDDPPPPDOK.KDDPPPPDDK...............",
-        "............KDPPPPPDOKKDPPPPPPDK................",
-        "...KKKKKK...KDOOWWWOOOOOOWWWWODK................",
-        ".KKWWWWWWK..KDOOWWWWOHYYYYHOWWWOOOK.............",
-        "KWWWWWWWWWK.KDOOOOOOOHYYYYYYHOOOOOOK............",
-        "KWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK...........",
-        "KWWWWWWWOHHSKOOOOOOHHHHHHHSSSSSSHOOOK...........",
-        "KWWWWWWOHHHSSKOOOOOHHHHHHOOOOOOOHOOOK...........",
-        ".KWWWWOHHHHSSKOOOOHHHHHHHNNNNNNNHOOOK...........",
-        "..KWWOHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK..........",
-        "...KOOHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK..........",
-        "....KOOOHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK........",
-        ".....KOOOHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK........",
-        "......KOOOHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK........",
-        ".......KOOOHSK..KWWWWWWWWWWWWWWWWWWWWK..........",
-        "........KOOOHSK..KKWWWWWWWWWWWWWWWWKK...........",
-        ".........KOOOOK..KSSSSCCCCWWWWWWWWKK............",
-        ".........KOOOOOKKSOOOOOOOOWWWWWWWWWWK...........",
-        "..........KOOOOOKSOOOOOHHOWWWWWWWWWWWK..........",
-        "...........KSSSSKSOOOOOHHOWWWWWWWWWWWK..........",
-        "............KKKKKSOOOOOOOOWWWWWWWWWWK...........",
-        "................KSSOOOOOOOWWWWWWWWWK............",
-        "................KKDDDDKKKKKDDDDDDK..............",
-        ".................KDDDDDK..KDDDDDDK..............",
-        ".................KKKKKK...KKKKKKKK..............",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const SLEEP_1 = [
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        ".................KK...........KK................",
-        "................KDDK.........KDDK...............",
-        "...............KDDDDK.......KDDDDK..............",
-        ".......KKKKKK..KDDDDDK.....KDDDDDDK.............",
-        ".....KKOOOOOOKKDDPPDDDK...KDDPPPDDK.............",
-        "....KOOOOOOOOOKDDPPPPDOK.KDDPPPPDDK.............",
-        "...KOOOOOHHHHHOKDPPPPPDOKKDPPPPPPDK.............",
-        "..KOOOOOHHHHHHHOKDOOWWWOOOOOOWWWWODK............",
-        ".KOOOOOHHHHHHHHHHDOOWWWWOHYYYYHOWWWOOOK.........",
-        ".KOOOOOHHHHHHHHHHHHOOOOOOHYYYYYYHOOOOOOK........",
-        "KSOOOOOHHHHHHHHHHHHHHHHHHHSSSSSSHOOOOOOK.KKKK...",
-        ".KSOOOOOHHHHHHHSSSSOOOOOHNNNNNNHHOOOOONNKKWWWK..",
-        "..KSOOOOOOHHHSSSSSSOOOWWHHHHHHHHWWWWWWNNKWWWWWK.",
-        "..KSSOOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKWWWWWWWK",
-        "...KSSOOOOOHSKKOOOOOKKWWWWWWRRRWWWWWWKKWWWWWWWWK",
-        "...KSSSOOOOOHKOOOOOOOOKKKKKCCCCCCKKKKKWWWWWWWWWK",
-        "....KSSSSOOOOKOOOOOHHHHHHHHOOOOOOHHWWWWWWWWWWWWK",
-        ".....KKKSSSSOOOHHHHHHHHHHHHHHHHHHHOWWWWWWWWWWWWK",
-        "........KKKSSSSOOOOOOHHHHHHHHHHHOWWWWWWWWWWWWWK.",
-        "...........KKKSSSSOOOOOOOOOOOOOHWWWWWWWWWWWWWK..",
-        "..............KKKKSSSSOOOOOOOOOWWWWWWWWWWWWWK...",
-        "..................KKKKKKCCCCCCCWWWWWWWWWWWKK....",
-        "........................KKKKKKKKKKKKKKKKKK......",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const SLEEP_2 = [
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        ".................KK...........KK................",
-        "................KDDK.........KDDK...............",
-        "...............KDDDDK.......KDDDDK..............",
-        ".......KKKKKK..KDDDDDK.....KDDDDDDK.............",
-        ".....KKOOOOOOKKDDPPDDDK...KDDPPPDDK.............",
-        "....KOOOOOOOOOKDDPPPPDOK.KDDPPPPDDK.............",
-        "...KOOOOOHHHHHOKDPPPPPDOKKDPPPPPPDK.............",
-        "..KOOOOOHHHHHHHOKDOOWWWOOOOOOWWWWODK............",
-        ".KOOOOOHHHHHHHHHHDOOWWWWOHYYYYHOWWWOOOK..KKKK...",
-        "KSOOOOOHHHHHHHHHHHHOOOOOOHYYYYYYHOOOOOOKKWWWWK..",
-        ".KSOOOOOHHHHHHHHHHHHHHHHHHSSSSSSHOOOOOOKWWWWWWK.",
-        "..KSOOOOOHHHHHHSSSSOOOOOHNNNNNNHHOOOOONNKWWWWWWK",
-        "..KSSOOOOOOHHSSSSSSOOOWWHHHHHHHHWWWWWWNNKWWWWWWK",
-        "...KSSOOOOOHSSSSKKKKWWWWWWWRRRWWWWWWWWKKWWWWWWWK",
-        "...KSSSOOOOOHSKKOOOOKKWWWWWWRRRWWWWWWKKWWWWWWWWK",
-        "....KSSSSOOOOHKOOOOOOOKKKKKCCCCCCKKKKKWWWWWWWWWK",
-        ".....KKKSSSSOOOKOOOOHHHHHHHHOOOOOHHWWWWWWWWWWWK.",
-        "........KKKSSSSOOHHHHHHHHHHHHHHHHOWWWWWWWWWWWWK.",
-        "...........KKKSSSSOOOOOHHHHHHHHHOWWWWWWWWWWWWK..",
-        "..............KKKKSSSSOOOOOOOOOOWWWWWWWWWWWWK...",
-        "..................KKKKKKCCCCCCCWWWWWWWWWWWKK....",
-        "........................KKKKKKKKKKKKKKKKKK......",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const JUMP_1 = [
-        "...................KK...........KK..............",
-        "..................KDDK.........KDDK.............",
-        ".................KDDDDK.......KDDDDK............",
-        "....KKKKKK.......KDDDDDK.....KDDDDDDK...........",
-        "..KKWWWWWWKK....KDDPPDDDK...KDDPPPDDK...........",
-        ".KWWWWWWWWWWK...KDDPPPPDOK.KDDPPPPDDK...........",
-        "KWWWWWWWWWWWWK..KDPPPPPDOKKDPPPPPPDK............",
-        "KWWWWWWWWWWWOHK.KDOOWWWOOOOOOWWWWODK............",
-        "KWWWWWWWWWWOHHSKKDOOWWWWOHYYYYHOWWWOOOK.........",
-        ".KWWWWWWWWOHHHSSKDOOOOOOOHYYYYYYHOOOOOOK........",
-        "..KWWWWWWOHHHHSSKOOOOOOOOHHHHHHHHHYYHOOOOK......",
-        "...KWWWWOHHHHHSSKOOOOOOHHHHHHHNNNNNNHOOOK.......",
-        "....KWWOHHHHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK.......",
-        ".....KOOHHHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK.......",
-        "......KOOOHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK.......",
-        ".......KOOOHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK.......",
-        "........KOOOHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK.....",
-        ".........KOOOHSSKKWWWWWWWRRRHEAAAAGWWWWONNK.....",
-        "..........KOOOOHSK.KWWWWWWRRRWWAAAAWWWWWWWKK....",
-        "..........KOOOOOOK..KWWWWWWWWWWWWWWWWWWWWK......",
-        "..........KOOOOOOOK..KKWWWWWWWWWWWWWWWWKK.......",
-        "..........KOOOOOOOOK.KSSSSCCCCWWWWWWWWKK........",
-        "...........KOOOOOOOOKKSOOOOOOOOWWWWWWWWWWK......",
-        "...........KOOOOOOOOOHHHHHHOOOOWWWWWWWWWWWK.....",
-        "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWK.....",
-        ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWK......",
-        "..............KSSOOOOOOOOOOOOOWWWWWWWWWWK.......",
-        ".............KDDKSSOOOOOOWWWWWWWWWWWWWK.........",
-        "............KDDDDK.KKKKKCCCCWWWWCCCKDDK.........",
-        "...........KDDDDDK......KKKKKKKKK..KDDDDK.......",
-        "...........KKKKKK...................KKKKK.......",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      // Happy Fox Dance Frames (48x36)
-      const DANCE_1 = [
-        ".................KK...........KK................",
-        "................KDDK.........KDDK...............",
-        "...............KDDDDK.......KDDDDK..............",
-        "....KKKKKK.....KDDDDDK.....KDDDDDDK.............",
-        "..KKWWWWWWKK..KDDPPDDDK...KDDPPPDDK.............",
-        ".KWWWWWWWWWWK.KDDPPPPDOK.KDDPPPPDDK.............",
-        "KWWWWWWWWWWWWKKDPPPPPDOKKDPPPPPPDK..............",
-        "KWWWWWWWWWWWOHKDOOWWWOOOOOOWWWWODK..............",
-        "KWWWWWWWWWWOHHSKDOOWWWWOHYYYYHOWWWOOOK..........",
-        ".KWWWWWWWWOHHHSSKDOOOOOOHYYYYYYHOOOOOOK.........",
-        "..KWWWWWWOHHHHSSKOOOOOOOOHHHHHHHHHYYHOOOOK......",
-        "...KWWWWOHHHHHSSKOOOOOOHHHHHHHNNNNNNHOOOK.......",
-        "....KWWOHHHHHHSSKOOOOOHHHHHHNNHHHHHHNHOOOK......",
-        ".....KOOHHHHHHSSKOOOOHHHHHHNHHHHHHHHNHHOOOK.....",
-        "......KOOOHHHHSSKOOOHWWHHHHNHHHHHHHHNHOOOK......",
-        ".......KOOOHHHSSKOOWWWWWHHHHHHHHHHHHHWWONNK.....",
-        "........KOOOHHSSKWWWWWWWWHHHRRRHHHHWWWWONNK.....",
-        ".........KOOOHSSKKWWWWWWWRRRRRRWWWWWWWWWWKK.....",
-        "..........KOOOOHSK.KWWWWWWWWWWWWWWWWWWWWK.......",
-        "..........KOOOOOOK..KKWWWWWWWWWWWWWWWWKK........",
-        "..........KOOOOOOOK...KSSSSCCCCWWWWWWKK..KKK....",
-        "...........KOOOOOOOK.KSOOOOOOOOWWWWWWWK.KDDDK...",
-        "...........KOOOOOOOOHHHHHHOOOOOWWWWWWWKKDDDDK...",
-        "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWDDK....",
-        ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWKK.....",
-        "..............KSSOOOOOOOOOOOOOWWWWWWWWWWKKK.....",
-        "...............KSSOOOOOOWWWWWWWWWWWWWWKMMK......",
-        "...............KDDK..KKKKCCCCWWWWCCCCKMMMK......",
-        "..............KDDDDK.....KKKKKDDK....KKKK.......",
-        ".............KDDDDDK........KDDDDK..............",
-        ".............KKKKKK.........KKKKK...............",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const DANCE_2 = [
-        "................................................",
-        "..................KK...........KK...............",
-        ".................KDDK.........KDDK..............",
-        "................KDDDDK.......KDDDDK.............",
-        "................KDDDDDK.....KDDDDDDK............",
-        "...............KDDPPDDDK...KDDPPPDDK............",
-        "...............KDDPPPPDOK.KDDPPPPDDK............",
-        "...............KDPPPPPDOKKDPPPPPPDK.............",
-        ".....KKKKKK....KDOOWWWOOOOOOWWWWODK.............",
-        "...KKWWWWWWKK.KDOOWWWWOHYYYYHOWWWOOOK...........",
-        "..KWWWWWWWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........",
-        ".KWWWWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK.......",
-        ".KWWWWWWWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK.......",
-        "..KWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK......",
-        "...KWWWWWWOHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK......",
-        "....KWWWWOHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK......",
-        ".....KWWOHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK......",
-        "......KOOHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK....",
-        ".......KOOOHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK....",
-        "........KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK....",
-        ".........KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK..KKK.",
-        ".........KOOOOHHSK...KKWWWWWWWWWWWWWWWWKK..KDDDK",
-        "..........KOOOOHSSK..KSSSSCCCCWWWWWWWWKK..KDDDDK",
-        "..........KOOOOOHSSKKSOOOOOOOOWWWWWWWWWKKKDDDDK.",
-        "...........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWWWKK...",
-        "...........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWKK.....",
-        "............KSSOOHHHHHHOOOOOOWWWWWWWWWWWK.......",
-        ".............KSSOOOOOOOOOOOOOWWWWWWWWWWK........",
-        "..............KSSOOOOOOWWWWWWWWWWWWWWWK.........",
-        ".............KMMK..KKKKCCCCWWWWCCCKDDK..........",
-        "............KMMMK......KKKKKKKKK..KDDDDK........",
-        "............KKKK..................KKKKK.........",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      // 16x14 Butterfly Sprites
-      const BUTTERFLY_1 = [
-        "..KKKK....KKKK..",
-        ".KAAAAK..KAAAAK.",
-        "KAAAGGAKKAGGAAAK",
-        "KAAGGGAKKAGGGAAK",
-        "KAAAGVVKKVVGAAAK",
-        ".KAAVVVKKVVVAAK.",
-        "..KKKKKNNKKKKK..",
-        "..KVVVVNNVVVVK..",
-        ".KVVYYYNNYYYVVK.",
-        ".KVVYYYNNYYYVVK.",
-        "..KVVVVKKVVVVK..",
-        "...KKKK..KKKK...",
-        "................",
-        "................"
-      ];
-
-      const BUTTERFLY_2 = [
-        ".....KKKKKK.....",
-        "....KAAAAAAK....",
-        "...KAAAGGAAAK...",
-        "...KAAGGGAAAK...",
-        "....KAAVVAAK....",
-        "....KVVNNVVK....",
-        ".....KNNNNK.....",
-        "....KVVNNVVK....",
-        "....KVYNNYVK....",
-        ".....KVKKVK.....",
-        "......KKKK......",
-        "................",
-        "................",
-        "................"
-      ];
-
-      // 14x14 Bouncy Toy Ball Sprites
-      const BALL_1 = [
-        "....KKKKKK....",
-        "..KKZZZZZZKK..",
-        ".KZZZGGGGZZZK.",
-        ".KZZGGGGZZZZK.",
-        "KZZZZGGWWWWWWK",
-        "KZZZZWWWWWWWWK",
-        "KZZWWWWYYYYWWK",
-        "KWWWWYYYYYYYYK",
-        "KWWYYYYYYYYYYK",
-        "KYYYYYYYYZZZZK",
-        ".KYYYYZZZZZZK.",
-        ".KZZZZZZZZZZK.",
-        "..KKZZZZZZKK..",
-        "....KKKKKK...."
-      ];
-
-      const BALL_2 = [
-        "....KKKKKK....",
-        "..KKYYYYYYKK..",
-        ".KYYYGGGGYYYK.",
-        ".KYYGGGGYYYYK.",
-        "KYYYYGGWWWWWWK",
-        "KYYYYWWWWWWWWK",
-        "KYYWWWWZZZZWWK",
-        "KWWWWZZZZZZZZK",
-        "KWWZZZZZZZZZZK",
-        "KZZZZZZZZYYYYK",
-        ".KZZZZYYYYYYK.",
-        ".KYYYYYYYYYYK.",
-        "..KKYYYYYYKK..",
-        "....KKKKKK...."
-      ];
-
-      // 48x36 Chibi Bear Friend Sprites
-      const BEAR_WALK_1 = [
-        "................................................",
-        "...............KKKKK.........KKKKK..............",
-        ".............KKDOOOOKK.....KKDOOOOKK............",
-        "............KDOOOOOOOOK...KDOOOOOOOOK...........",
-        "............KDOOPPPPOODK.KDOOPPPPOODK...........",
-        "............KDOOPWWPOODK.KDOOPWWPOODK...........",
-        "............KDOOOOOOOODKKKDOOOOOOOODK...........",
-        ".............KDOOOOOOHYYYYYHOOOOOODK............",
-        "............KDOOOOOOHYYYYYYYHOOOOOODK...........",
-        "...........KOOOOOOOOHHHHHHHHHYYHOOOOOK..........",
-        "..........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK.........",
-        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
-        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
-        "........KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.......",
-        "........KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.......",
-        "........KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK......",
-        "........KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK......",
-        ".........KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK......",
-        ".........KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.......",
-        "..........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK.........",
-        "...........KSSSOOOOOOOOOOOOOSSSSKKKK............",
-        ".........KKKKKSSSSOOOOOOOOOOOOOOOWWWWK..........",
-        "........KOOOOKSOOOOOOOOOOOOOOOOOWWWWWWK.........",
-        ".......KOOOOOHKSOOOOOHHHHHHOOOOOOWWWWWWWK.......",
-        ".......KOOOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
-        "........KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
-        "..........KKKKSSSSOOHHHHHHOOOOOOWWWWWWWWK.......",
-        "..........KSSSSSSSOOOOOOOOOOOOOWWWWWWWK.........",
-        "...........KSSSSSOOOOOOOOOWWWWWWWWWWK...........",
-        "...........KDDK.KMMKKOOOOCCCCWWWWCK.............",
-        "..........KDDDDKKMMK.KKKKKDDK.KMMK..............",
-        "..........KKKKK.KKKK.....KDDDDKKKK..............",
-        ".........................KKKKK..................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const BEAR_WALK_2 = [
-        "................................................",
-        "...............KKKKK.........KKKKK..............",
-        ".............KKDOOOOKK.....KKDOOOOKK............",
-        "............KDOOOOOOOOK...KDOOOOOOOOK...........",
-        "............KDOOPPPPOODK.KDOOPPPPOODK...........",
-        "............KDOOPWWPOODK.KDOOPWWPOODK...........",
-        "............KDOOOOOOOODKKKDOOOOOOOODK...........",
-        ".............KDOOOOOOHYYYYYHOOOOOODK............",
-        "............KDOOOOOOHYYYYYYYHOOOOOODK...........",
-        "...........KOOOOOOOOHHHHHHHHHYYHOOOOOK..........",
-        "..........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK.........",
-        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
-        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
-        "........KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.......",
-        "........KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.......",
-        "........KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK......",
-        "........KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK......",
-        ".........KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK......",
-        ".........KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.......",
-        "..........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK.........",
-        ".........KKKKKSSSOOOOOOOOOOOSSSSKKKK............",
-        "........KOOOOKSSSSOOOOOOOOOOOOOOOWWWWK..........",
-        ".......KOOOOOHKSOOOOOOOOOOOOOOOOOWWWWWWK........",
-        ".......KOOOOOOKSOOOOOHHHHHHOOOOOOWWWWWWWK.......",
-        "........KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
-        "..........KKKKKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
-        "..........KSSSSSSSOOHHHHHHOOOOOOWWWWWWWWK.......",
-        "..........KSSSSSSSOOOOOOOOOOOOOWWWWWWWK.........",
-        "...........KSSSSSOOOOOOOOOWWWWWWWWWWK...........",
-        "............KDDKKMMKKOOOOCCCCWWWWCK.............",
-        "............KDDDKMMK.KKKKKDDK.KMMK..............",
-        "............KKKKKKKK.....KDDDKKKK...............",
-        ".........................KKKK...................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const BEAR_WALK_3 = [
-        "................................................",
-        "...............KKKKK.........KKKKK..............",
-        ".............KKDOOOOKK.....KKDOOOOKK............",
-        "............KDOOOOOOOOK...KDOOOOOOOOK...........",
-        "............KDOOPPPPOODK.KDOOPPPPOODK...........",
-        "............KDOOPWWPOODK.KDOOPWWPOODK...........",
-        "............KDOOOOOOOODKKKDOOOOOOOODK...........",
-        ".............KDOOOOOOHYYYYYHOOOOOODK............",
-        "............KDOOOOOOHYYYYYYYHOOOOOODK...........",
-        "...........KOOOOOOOOHHHHHHHHHYYHOOOOOK..........",
-        "..........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK.........",
-        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
-        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
-        "........KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.......",
-        "........KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.......",
-        "........KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK......",
-        "........KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK......",
-        ".........KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK......",
-        ".........KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.......",
-        "..........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK.........",
-        "...........KSSSOOOOOOOOOOOOOSSSSKKKK............",
-        ".........KKKKKSSSSOOOOOOOOOOOOOOOWWWWK..........",
-        "........KOOOOKSOOOOOOOOOOOOOOOOOWWWWWWK.........",
-        ".......KOOOOOHKSOOOOOHHHHHHOOOOOOWWWWWWWK.......",
-        ".......KOOOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
-        "........KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
-        "..........KKKKSSSSOOHHHHHHOOOOOOWWWWWWWWK.......",
-        "..........KSSSSSSSOOOOOOOOOOOOOWWWWWWWK.........",
-        "...........KSSSSSOOOOOOOOOWWWWWWWWWWK...........",
-        "...........KMMK.KDDKKOOOOCCCCWWWWCK.............",
-        "..........KMMMK.KDDDKKKKKKMMK.KDDK..............",
-        "..........KKKK..KKKKK....KMMMKKKKDK.............",
-        ".........................KKKK.KKKK..............",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const BEAR_WAVE_1 = [
-        "................................................",
-        ".............KKKKK.........KKKKK................",
-        "...........KKDOOOOKK.....KKDOOOOKK..............",
-        "..........KDOOOOOOOOK...KDOOOOOOOOK.............",
-        "..........KDOOPPPPOODK.KDOOPPPPOODK.............",
-        "..........KDOOPWWPOODK.KDOOPWWPOODK.............",
-        "..........KDOOOOOOOODKKKDOOOOOOOODK.............",
-        "...........KDOOOOOOHYYYYYHOOOOOODK..............",
-        "..........KDOOOOOOHYYYYYYYHOOOOOODK.............",
-        ".........KOOOOOOOOHHHHHHHHHYYHOOOOOK............",
-        "........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK...........",
-        ".......KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK..........",
-        ".......KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK..........",
-        "......KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.........",
-        "......KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.........",
-        "......KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK........",
-        "......KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK........",
-        ".......KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK.KKKK...",
-        ".......KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.KDDDDK..",
-        "........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK..KDOOOOOK.",
-        ".........KSSSOOOOOOOOOOOOOSSSSKKKK....KOOOOOOOK.",
-        ".......KKKKKSSSSOOOOOOOOOOOOOOOWWWWK.KOOOOOOOK..",
-        "......KOOOOKSOOOOOOOOOOOOOOOOOWWWWWWKOOOOOOOK...",
-        ".....KOOOOOHKSOOOOOHHHHHHOOOOOOWWWWWWWOOOOOK....",
-        ".....KOOOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWKKKKK.....",
-        "......KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.........",
-        "........KKKKSSSSOOHHHHHHOOOOOOWWWWWWWWK.........",
-        "........KSSSSSSSOOOOOOOOOOOOOWWWWWWWWK..........",
-        ".........KSSSSSOOOOOOOOOWWWWWWWWWWWWK...........",
-        ".........KKKKDDDDKKKKKKOOOOCCCCWWWWCK...........",
-        ".............KDDDDDK...KKKKDDDDDDKKK............",
-        ".............KKKKKK........KKKKKK...............",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
-
-      const BEAR_WAVE_2 = [
-        "................................................",
-        ".............KKKKK.........KKKKK................",
-        "...........KKDOOOOKK.....KKDOOOOKK..............",
-        "..........KDOOOOOOOOK...KDOOOOOOOOK.............",
-        "..........KDOOPPPPOODK.KDOOPPPPOODK.............",
-        "..........KDOOPWWPOODK.KDOOPWWPOODK.............",
-        "..........KDOOOOOOOODKKKDOOOOOOOODK.............",
-        "...........KDOOOOOOHYYYYYHOOOOOODK..............",
-        "..........KDOOOOOOHYYYYYYYHOOOOOODK.............",
-        ".........KOOOOOOOOHHHHHHHHHYYHOOOOOK............",
-        "........KOOOOOOOOHHHHHHHSSSSSSHOOOOOK...........",
-        ".......KOOOOOOOOHHHHHHHOOOOOOOHOOOOOOK..........",
-        ".......KOOOOOOOOHHHHHHHNNNNNNNHOOOOOOK..........",
-        "......KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.........",
-        "......KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.........",
-        "......KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK........",
-        "......KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK........",
-        ".......KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK........",
-        ".......KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK...KKKK..",
-        "........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK....KDDDDK.",
-        ".......KKKKKSSSOOOOOOOOOOOSSSSKKKK......KDOOOOOK",
-        "......KOOOOKSSSSOOOOOOOOOOOOOOOWWWWK...KOOOOOOOK",
-        ".....KOOOOOHKSOOOOOOOOOOOOOOOOOWWWWWWK.KOOOOOOK.",
-        ".....KOOOOOOKSOOOOOHHHHHHOOOOOOWWWWWWWKOOOOOOK..",
-        "......KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWOOOOOK....",
-        "........KKKKKOOOOOOOOOOOOOOOOWWWWWWWWWKKKKK.....",
-        "........KSSSSSSSOOHHHHHHOOOOOOWWWWWWWWK.........",
-        "........KSSSSSSSOOOOOOOOOOOOOWWWWWWWWK..........",
-        ".........KSSSSSOOOOOOOOOWWWWWWWWWWWWK...........",
-        ".........KKKKDDDDKKKKKKOOOOCCCCWWWWCK...........",
-        ".............KDDDDDK...KKKKDDDDDDKKK............",
-        ".............KKKKKK........KKKKKK...............",
-        "................................................",
-        "................................................",
-        "................................................",
-        "................................................"
-      ];
 
       const SPRITE_W = 48;
       const SPRITE_H = 36;
@@ -860,6 +243,70 @@
         a.style.height = HEIGHT + "px";
       });
 
+      function drawSprite(ctx, palette, grid, flipX, customScale = SCALE) {
+        const h = grid.length;
+        const w = grid[0].length;
+        ctx.clearRect(0, 0, w * customScale, h * customScale);
+        for (let r = 0; r < h; r++) {
+          const row = grid[r];
+          for (let c = 0; c < w; c++) {
+            const ch = row[c];
+            const color = palette[ch];
+            if (!color) continue;
+            const drawC = flipX ? (w - 1 - c) : c;
+            ctx.fillStyle = color;
+            ctx.fillRect(drawC * customScale, r * customScale, customScale, customScale);
+          }
+        }
+      }
+
+      // Setup Companion Picker UI
+      const pickerEl = document.getElementById("companion-picker");
+      const pickerBtn = document.getElementById("picker-btn");
+      const pickerMenu = document.getElementById("picker-menu");
+      if (!SHOW_PICKER) pickerEl.style.display = "none";
+
+      function setSpecies(spId) {
+        if (!PALETTES[spId]) return;
+        currentSpecies = spId;
+        localStorage.setItem("stream_companion_species", currentSpecies);
+        const m = getMeta();
+        pickerBtn.innerHTML = `<span>${m.icon}</span><span>${m.name}</span><span style="opacity:0.65;font-size:10px;">▾</span>`;
+        foxBubble.style.color = m.bubbleColor;
+        foxBubble.style.borderColor = m.bubbleColor;
+        Array.from(pickerMenu.children).forEach((el) => {
+          const active = el.dataset.species === currentSpecies;
+          el.style.background = active ? "rgba(255, 158, 68, 0.22)" : "";
+          el.style.borderColor = active ? m.bubbleColor : "transparent";
+        });
+      }
+
+      SPECIES_META.forEach((sp, idx) => {
+        const item = document.createElement("div");
+        item.className = "picker-item";
+        item.dataset.species = sp.id;
+        const mini = document.createElement("canvas");
+        mini.width = 48;
+        mini.height = 36;
+        mini.className = "companion-canvas";
+        drawSprite(mini.getContext("2d"), PALETTES[sp.id], GEOMS[sp.geom].sit1, false, 1);
+        const label = document.createElement("span");
+        label.textContent = `${idx + 1}. ${sp.icon} ${sp.name}`;
+        item.appendChild(mini);
+        item.appendChild(label);
+        item.addEventListener("click", () => {
+          setSpecies(sp.id);
+          pickerEl.classList.remove("open");
+          showFoxBubble(`${sp.icon} ${sp.name}!`);
+        });
+        pickerMenu.appendChild(item);
+      });
+
+      pickerBtn.addEventListener("click", () => {
+        pickerEl.classList.toggle("open");
+      });
+      setSpecies(currentSpecies);
+
       function bottomY() {
         return Math.max(EDGE_PAD, window.innerHeight - HEIGHT - EDGE_PAD);
       }
@@ -877,30 +324,9 @@
       let jumpVy = 0;
       let foxBubbleTimer = null;
 
-      // Butterfly state
-      let bfX = 300;
-      let bfY = 300;
-      let bfBaseY = 300;
-      let bfVx = 2.0;
-      let bfPhase = 0;
-
-      // Bouncy Ball state
-      let ballX = 300;
-      let ballY = 300;
-      let ballVx = 4.0;
-      let ballVy = 0;
-      let ballFloorY = 400;
-      let ballBoopsLeft = 4;
-
-      // Bear friend state
-      // States: "hidden", "enter", "greet", "leave"
-      let bearState = "hidden";
-      let bearX = -WIDTH - 20;
-      let bearY = y;
-      let bearFacingRight = true;
-      let bearTimer = 12 * 60; // First visit ~12 seconds after load!
-      let bearExitX = -WIDTH - 30;
-      let bearBubbleTimer = null;
+      let bfX = 300, bfY = 300, bfBaseY = 300, bfVx = 2.0, bfPhase = 0;
+      let ballX = 300, ballY = 300, ballVx = 4.0, ballVy = 0, ballFloorY = 400, ballBoopsLeft = 4;
+      let bearState = "hidden", bearX = -WIDTH - 20, bearY = y, bearFacingRight = true, bearTimer = 12 * 60, bearExitX = -WIDTH - 30, bearBubbleTimer = null;
 
       function showFoxBubble(text, ms = 1600) {
         if (!SHOW_BUBBLES) return;
@@ -974,13 +400,10 @@
           return;
         }
         const r = Math.random();
-        if (r < 0.24) {
-          startButterflyChase();
-        } else if (r < 0.48) {
-          startBallPlay();
-        } else if (r < 0.68) {
-          startDance();
-        } else if (r < 0.84) {
+        if (r < 0.24) startButterflyChase();
+        else if (r < 0.48) startBallPlay();
+        else if (r < 0.68) startDance();
+        else if (r < 0.84) {
           mode = "sit";
           modeTimer = 140 + Math.random() * 100;
         } else {
@@ -1015,23 +438,6 @@
         }
       }
 
-      function drawSprite(ctx, palette, grid, flipX) {
-        const h = grid.length;
-        const w = grid[0].length;
-        ctx.clearRect(0, 0, w * SCALE, h * SCALE);
-        for (let r = 0; r < h; r++) {
-          const row = grid[r];
-          for (let c = 0; c < w; c++) {
-            const ch = row[c];
-            const color = palette[ch];
-            if (!color) continue;
-            const drawC = flipX ? (w - 1 - c) : c;
-            ctx.fillStyle = color;
-            ctx.fillRect(drawC * SCALE, r * SCALE, SCALE, SCALE);
-          }
-        }
-      }
-
       window.addEventListener("resize", () => {
         if (ROAM !== "full") {
           y = bottomY();
@@ -1042,33 +448,46 @@
         }
       });
 
-      // Keyboard shortcuts: B = Bear, D = Dance, F = Butterfly, P = Play Ball
+      // Keyboard shortcuts: 1-7 = Switch Companion, C = Toggle Picker, B = Bear, D = Dance, F = Butterfly, P = Ball
       window.addEventListener("keydown", (e) => {
         const k = e.key.toLowerCase();
-        if (k === "b") startBearVisit();
+        if (k >= "1" && k <= "7") {
+          const sp = SPECIES_META[parseInt(k, 10) - 1];
+          if (sp) {
+            setSpecies(sp.id);
+            showFoxBubble(`${sp.icon} ${sp.name}!`);
+          }
+        } else if (k === "c") {
+          pickerEl.style.display = pickerEl.style.display === "none" ? "block" : "none";
+        } else if (k === "b") startBearVisit();
         else if (k === "d") startDance();
         else if (k === "f") startButterflyChase();
         else if (k === "p") startBallPlay();
       });
 
+      foxActor.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const idx = SPECIES_META.findIndex((m) => m.id === currentSpecies);
+        const dir = e.deltaY > 0 ? 1 : -1;
+        const next = SPECIES_META[(idx + dir + SPECIES_META.length) % SPECIES_META.length];
+        setSpecies(next.id);
+        showFoxBubble(`${next.icon} ${next.name}!`);
+      });
+
       foxActor.addEventListener("click", () => {
         if (LOCKED_MODE !== "auto") return;
         clickCycle = (clickCycle + 1) % 4;
-        if (clickCycle === 1) {
-          startButterflyChase();
-        } else if (clickCycle === 2) {
-          startBallPlay();
-        } else if (clickCycle === 3) {
-          startDance();
-        } else {
+        if (clickCycle === 1) startButterflyChase();
+        else if (clickCycle === 2) startBallPlay();
+        else if (clickCycle === 3) startDance();
+        else {
           butterflyActor.style.display = "none";
           ballActor.style.display = "none";
           mode = "jump";
           jumpVy = -9.0;
           modeTimer = 180;
           pickDestination();
-          const quips = ["♥ Yip!", "★ Boing!", "♥ *wag*", "⚡ Zoom!"];
-          showFoxBubble(quips[Math.floor(Math.random() * quips.length)]);
+          showFoxBubble(currentSpecies === "chillet" ? "❄️ *noodle boing!*" : (currentSpecies.includes("cat") ? "🐾 *pounce!*" : "★ Boing!"));
         }
       });
 
@@ -1098,9 +517,7 @@
 
         if (bearState === "hidden") {
           bearTimer--;
-          if (bearTimer <= 0) {
-            startBearVisit();
-          }
+          if (bearTimer <= 0) startBearVisit();
           return;
         }
 
@@ -1116,18 +533,16 @@
 
           if (dist <= 6) {
             bearState = "greet";
-            bearTimer = BEAR_SETTING === "always" ? 999999 : 300; // ~5 seconds of waving/chatting
+            bearTimer = BEAR_SETTING === "always" ? 999999 : 300;
             bearFacingRight = x > bearX;
 
-            const bearGreets = ["👋 Hewwo Fox!", "🍯 Brought honey!", "♥ Hiya friend!", "✨ Rawr! Hi!"];
+            const bearGreets = ["👋 Hewwo friend!", "🍯 Brought honey!", "♥ Hiya buddy!", "✨ Rawr! Hi!"];
             showBearBubble(bearGreets[Math.floor(Math.random() * bearGreets.length)], 2200);
 
-            // Fox turns to face Bear and says hi back!
             facingRight = bearX > x;
             if (LOCKED_MODE === "auto" && mode !== "sleep") {
-              if (Math.random() < 0.45) {
-                startDance();
-              } else {
+              if (Math.random() < 0.45) startDance();
+              else {
                 butterflyActor.style.display = "none";
                 ballActor.style.display = "none";
                 mode = "sit";
@@ -1138,7 +553,7 @@
             setTimeout(() => {
               const foxReplies = mode === "sleep"
                 ? ["💤 *sleepy wag*", "♥ zZz... hi Bear!"]
-                : ["♥ Hi Bear!", "★ Yip yip!", "♪ Let's dance!", "🍯 Yay!"];
+                : ["♥ Hi Bear!", "★ Yay!", "♪ Let's dance!", "🍯 Yum!"];
               showFoxBubble(foxReplies[Math.floor(Math.random() * foxReplies.length)], 2000);
             }, 750);
           } else {
@@ -1148,9 +563,7 @@
           }
         } else if (bearState === "greet") {
           bearFacingRight = x > bearX;
-          if (LOCKED_MODE === "auto" && mode === "sit") {
-            facingRight = bearX > x;
-          }
+          if (LOCKED_MODE === "auto" && mode === "sit") facingRight = bearX > x;
           bearTimer--;
           if (bearTimer <= 0 && BEAR_SETTING !== "always") {
             bearState = "leave";
@@ -1163,7 +576,6 @@
           if (Math.abs(dx) <= 8) {
             bearState = "hidden";
             bearActor.style.display = "none";
-            // Next visit in BEAR_INTERVAL_SEC +/- 30%
             const jitter = 0.7 + Math.random() * 0.6;
             bearTimer = Math.round(BEAR_INTERVAL_SEC * 60 * jitter);
             return;
@@ -1214,7 +626,6 @@
           mode = "sit";
         }
 
-        // Pause walking while greeting the Bear so they chat face-to-face
         const chattingWithBear = bearState === "greet" && LOCKED_MODE === "auto" && mode !== "sleep" && mode !== "dance";
 
         if (chattingWithBear) {
@@ -1243,7 +654,7 @@
           }
 
           const bfSprite = Math.floor(frameTick / 5) % 2 === 0 ? BUTTERFLY_1 : BUTTERFLY_2;
-          drawSprite(butterflyCtx, FOX_PALETTE, bfSprite, false);
+          drawSprite(butterflyCtx, PALETTES.fox, bfSprite, false);
           butterflyActor.style.left = Math.round(bfX) + "px";
           butterflyActor.style.top = Math.round(bfY) + "px";
 
@@ -1295,7 +706,7 @@
           }
 
           const bSprite = Math.floor(frameTick / 6) % 2 === 0 ? BALL_1 : BALL_2;
-          drawSprite(ballCtx, FOX_PALETTE, bSprite, false);
+          drawSprite(ballCtx, PALETTES.fox, bSprite, false);
           ballActor.style.left = Math.round(ballX) + "px";
           ballActor.style.top = Math.round(ballY) + "px";
 
@@ -1342,9 +753,8 @@
           if (LOCKED_MODE === "auto") {
             modeTimer--;
             if (modeTimer <= 0) {
-              if (Math.random() < 0.55) {
-                pickNextActivity();
-              } else {
+              if (Math.random() < 0.55) pickNextActivity();
+              else {
                 mode = "walk";
                 modeTimer = 220;
                 pickDestination();
@@ -1363,23 +773,27 @@
           }
         }
 
-        let sprite = SIT_1;
+        const meta = getMeta();
+        const geom = GEOMS[meta.geom];
+        const pal = PALETTES[currentSpecies];
+
+        let sprite = geom.sit1;
         if (jumpY < -1 && mode !== "dance") {
-          sprite = JUMP_1;
+          sprite = geom.jump1;
         } else if (mode === "dance") {
-          sprite = Math.floor(frameTick / 9) % 2 === 0 ? DANCE_1 : DANCE_2;
+          sprite = Math.floor(frameTick / 9) % 2 === 0 ? geom.dance1 : geom.dance2;
         } else if (mode === "walk" || mode === "butterfly" || mode === "ball") {
           const cycle = Math.floor(frameTick / 7) % 4;
-          sprite = [WALK_1, WALK_2, WALK_3, WALK_2][cycle];
+          sprite = [geom.walk1, geom.walk2, geom.walk3, geom.walk2][cycle];
         } else if (mode === "sit") {
           const wag = Math.floor(frameTick / 24) % 2 === 0;
-          sprite = wag ? SIT_1 : SIT_2;
+          sprite = wag ? geom.sit1 : geom.sit2;
         } else if (mode === "sleep") {
           const breathe = Math.floor(frameTick / 55) % 2 === 0;
-          sprite = breathe ? SLEEP_1 : SLEEP_2;
+          sprite = breathe ? geom.sleep1 : geom.sleep2;
         }
 
-        drawSprite(foxCtx, FOX_PALETTE, sprite, !facingRight);
+        drawSprite(foxCtx, pal, sprite, !facingRight);
         foxActor.style.left = Math.round(x) + "px";
         foxActor.style.top = Math.round(y + jumpY) + "px";
 
