@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fox Stream Companion (OBS Browser Source)</title>
+  <title>Fox & Bear Stream Companions (OBS Browser Source)</title>
   <style>
     html, body {
       margin: 0;
@@ -23,7 +23,7 @@
       pointer-events: none;
     }
 
-    #fox-actor {
+    .companion-actor {
       position: absolute;
       left: 120px;
       top: 0px;
@@ -33,14 +33,14 @@
       will-change: transform, left, top;
     }
 
-    #fox-canvas {
+    .companion-canvas {
       display: block;
       image-rendering: -moz-crisp-edges;
       image-rendering: crisp-edges;
       image-rendering: pixelated;
     }
 
-    #fox-bubble {
+    .companion-bubble {
       position: absolute;
       bottom: 100%;
       left: 50%;
@@ -60,7 +60,12 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     }
 
-    #fox-bubble.visible {
+    #bear-bubble {
+      color: #ffd07b;
+      border-color: rgba(201, 141, 99, 0.65);
+    }
+
+    .companion-bubble.visible {
       opacity: 1;
       transform: translateX(-50%) translateY(-8px);
     }
@@ -68,9 +73,13 @@
 </head>
 <body>
   <div id="fox-stage">
-    <div id="fox-actor">
-      <div id="fox-bubble"></div>
-      <canvas id="fox-canvas"></canvas>
+    <div id="bear-actor" class="companion-actor" style="display: none;">
+      <div id="bear-bubble" class="companion-bubble"></div>
+      <canvas id="bear-canvas" class="companion-canvas"></canvas>
+    </div>
+    <div id="fox-actor" class="companion-actor">
+      <div id="fox-bubble" class="companion-bubble"></div>
+      <canvas id="fox-canvas" class="companion-canvas"></canvas>
     </div>
   </div>
 
@@ -79,16 +88,20 @@
       const params = new URLSearchParams(window.location.search);
 
       // URL Parameters for OBS Browser Source customization:
-      // ?scale=3        -> Pixel multiplier (default: 3 = 144x108px, 2 = 96x72px, 4 = 192x144px)
-      // ?roam=bottom    -> "bottom" (default: walks along bottom edge), "full" (2D roam), "fixed" (stays in place)
-      // ?mode=auto      -> "auto" (default: walk/sit/sleep/pounce), "sleep" (always sleeping), "sit" (always sitting), "walk" (always walking)
-      // ?speed=1.0      -> Movement speed multiplier (default: 1.0)
-      // ?bubbles=1      -> 1 (show Zzz / Yip bubbles) or 0 (hide bubbles)
-      // ?padding=16     -> Bottom/edge padding in pixels (default: 16)
-      // ?chroma=none    -> "none" (transparent), "green" (#00ff00), "magenta" (#ff00ff)
+      // ?scale=3          -> Pixel multiplier (default: 3 = 144x108px, 2 = 96x72px, 4 = 192x144px)
+      // ?roam=bottom      -> "bottom" (default: walks along bottom edge), "full" (2D roam), "fixed" (stays in place)
+      // ?mode=auto        -> "auto" (default: walk/sit/sleep/pounce), "sleep" (always sleeping), "sit" (always sitting), "walk"
+      // ?bear=1           -> "1" (default: bear pops up periodically to say hi), "0" (no bear), "always" (bear stays on screen)
+      // ?bear_interval=45 -> Average seconds between bear visits (default: 45)
+      // ?speed=1.0        -> Movement speed multiplier (default: 1.0)
+      // ?bubbles=1        -> 1 (show Zzz / Yip / Hewwo bubbles) or 0 (hide bubbles)
+      // ?padding=16       -> Bottom/edge padding in pixels (default: 16)
+      // ?chroma=none      -> "none" (transparent), "green" (#00ff00), "magenta" (#ff00ff)
       const SCALE = Math.max(1, Math.min(8, parseInt(params.get("scale") || "3", 10)));
       const ROAM = (params.get("roam") || "bottom").toLowerCase();
       const LOCKED_MODE = (params.get("mode") || "auto").toLowerCase();
+      const BEAR_SETTING = (params.get("bear") || "1").toLowerCase();
+      const BEAR_INTERVAL_SEC = Math.max(8, parseInt(params.get("bear_interval") || "45", 10));
       const SPEED_MULT = Math.max(0.2, Math.min(5.0, parseFloat(params.get("speed") || "1.0")));
       const SHOW_BUBBLES = params.get("bubbles") !== "0";
       const EDGE_PAD = Math.max(0, parseInt(params.get("padding") || "16", 10));
@@ -100,7 +113,7 @@
         document.body.style.background = "#ff00ff";
       }
 
-      const PALETTE = {
+      const FOX_PALETTE = {
         ".": null,
         "K": "#23192d", // Soft dark plum-charcoal outline
         "N": "#120c1c", // Deepest lash & glossy button nose
@@ -112,6 +125,26 @@
         "Y": "#ffd07b", // Soft sunny crown & brow dot highlight
         "W": "#fff8eb", // Fluffy warm milk-white fur
         "C": "#ebd9c5", // Soft biscuit shadow on white fur
+        "P": "#ff9ebb", // Sweet pastel pink inner ear
+        "R": "#ff7597", // Rosy kawaii cheek blush
+        "B": "#0e2f70", // Deep starry navy upper iris
+        "E": "#1f7ae0", // Vibrant sky-sapphire mid iris
+        "A": "#66ecff", // Glowing crystal-aqua lower iris
+        "G": "#ffffff"  // Pure white eye sparkle
+      };
+
+      const BEAR_PALETTE = {
+        ".": null,
+        "K": "#23192d", // Soft dark plum-charcoal outline
+        "N": "#120c1c", // Deepest lash & glossy button nose
+        "D": "#3d2214", // Dark espresso paw boots & ear rim
+        "M": "#29150c", // Far-side shaded paw
+        "S": "#5e361e", // Rich cocoa-brown shading
+        "O": "#85502e", // Warm cinnamon teddy-bear brown
+        "H": "#a66a43", // Soft honey-caramel highlight
+        "Y": "#c98d63", // Light golden-tan crown highlight
+        "W": "#fff3e0", // Creamy vanilla muzzle & round belly patch
+        "C": "#e6cfb3", // Soft latte shadow on cream fur
         "P": "#ff9ebb", // Sweet pastel pink inner ear
         "R": "#ff7597", // Rosy kawaii cheek blush
         "B": "#0e2f70", // Deep starry navy upper iris
@@ -432,26 +465,231 @@
         "................................................"
       ];
 
+      // 48x36 Chibi Bear Friend Sprites
+      const BEAR_WALK_1 = [
+        "................................................",
+        "...............KKKKK.........KKKKK..............",
+        ".............KKDOOOOKK.....KKDOOOOKK............",
+        "............KDOOOOOOOOK...KDOOOOOOOOK...........",
+        "............KDOOPPPPOODK.KDOOPPPPOODK...........",
+        "............KDOOPWWPOODK.KDOOPWWPOODK...........",
+        "............KDOOOOOOOODKKKDOOOOOOOODK...........",
+        ".............KDOOOOOOHYYYYYHOOOOOODK............",
+        "............KDOOOOOOHYYYYYYYHOOOOOODK...........",
+        "...........KOOOOOOOOHHHHHHHHHYYHOOOOOK..........",
+        "..........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK.........",
+        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
+        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
+        "........KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.......",
+        "........KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.......",
+        "........KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK......",
+        "........KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK......",
+        ".........KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK......",
+        ".........KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.......",
+        "..........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK.........",
+        "...........KSSSOOOOOOOOOOOOOSSSSKKKK............",
+        ".........KKKKKSSSSOOOOOOOOOOOOOOOWWWWK..........",
+        "........KOOOOKSOOOOOOOOOOOOOOOOOWWWWWWK.........",
+        ".......KOOOOOHKSOOOOOHHHHHHOOOOOOWWWWWWWK.......",
+        ".......KOOOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
+        "........KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
+        "..........KKKKSSSSOOHHHHHHOOOOOOWWWWWWWWK.......",
+        "..........KSSSSSSSOOOOOOOOOOOOOWWWWWWWK.........",
+        "...........KSSSSSOOOOOOOOOWWWWWWWWWWK...........",
+        "...........KDDK.KMMKKOOOOCCCCWWWWCK.............",
+        "..........KDDDDKKMMK.KKKKKDDK.KMMK..............",
+        "..........KKKKK.KKKK.....KDDDDKKKK..............",
+        ".........................KKKKK..................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const BEAR_WALK_2 = [
+        "................................................",
+        "...............KKKKK.........KKKKK..............",
+        ".............KKDOOOOKK.....KKDOOOOKK............",
+        "............KDOOOOOOOOK...KDOOOOOOOOK...........",
+        "............KDOOPPPPOODK.KDOOPPPPOODK...........",
+        "............KDOOPWWPOODK.KDOOPWWPOODK...........",
+        "............KDOOOOOOOODKKKDOOOOOOOODK...........",
+        ".............KDOOOOOOHYYYYYHOOOOOODK............",
+        "............KDOOOOOOHYYYYYYYHOOOOOODK...........",
+        "...........KOOOOOOOOHHHHHHHHHYYHOOOOOK..........",
+        "..........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK.........",
+        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
+        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
+        "........KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.......",
+        "........KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.......",
+        "........KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK......",
+        "........KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK......",
+        ".........KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK......",
+        ".........KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.......",
+        "..........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK.........",
+        ".........KKKKKSSSOOOOOOOOOOOSSSSKKKK............",
+        "........KOOOOKSSSSOOOOOOOOOOOOOOOWWWWK..........",
+        ".......KOOOOOHKSOOOOOOOOOOOOOOOOOWWWWWWK........",
+        ".......KOOOOOOKSOOOOOHHHHHHOOOOOOWWWWWWWK.......",
+        "........KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
+        "..........KKKKKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
+        "..........KSSSSSSSOOHHHHHHOOOOOOWWWWWWWWK.......",
+        "..........KSSSSSSSOOOOOOOOOOOOOWWWWWWWK.........",
+        "...........KSSSSSOOOOOOOOOWWWWWWWWWWK...........",
+        "............KDDKKMMKKOOOOCCCCWWWWCK.............",
+        "............KDDDKMMK.KKKKKDDK.KMMK..............",
+        "............KKKKKKKK.....KDDDKKKK...............",
+        ".........................KKKK...................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const BEAR_WALK_3 = [
+        "................................................",
+        "...............KKKKK.........KKKKK..............",
+        ".............KKDOOOOKK.....KKDOOOOKK............",
+        "............KDOOOOOOOOK...KDOOOOOOOOK...........",
+        "............KDOOPPPPOODK.KDOOPPPPOODK...........",
+        "............KDOOPWWPOODK.KDOOPWWPOODK...........",
+        "............KDOOOOOOOODKKKDOOOOOOOODK...........",
+        ".............KDOOOOOOHYYYYYHOOOOOODK............",
+        "............KDOOOOOOHYYYYYYYHOOOOOODK...........",
+        "...........KOOOOOOOOHHHHHHHHHYYHOOOOOK..........",
+        "..........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK.........",
+        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
+        ".........KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK........",
+        "........KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.......",
+        "........KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.......",
+        "........KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK......",
+        "........KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK......",
+        ".........KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK......",
+        ".........KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.......",
+        "..........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK.........",
+        "...........KSSSOOOOOOOOOOOOOSSSSKKKK............",
+        ".........KKKKKSSSSOOOOOOOOOOOOOOOWWWWK..........",
+        "........KOOOOKSOOOOOOOOOOOOOOOOOWWWWWWK.........",
+        ".......KOOOOOHKSOOOOOHHHHHHOOOOOOWWWWWWWK.......",
+        ".......KOOOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
+        "........KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.......",
+        "..........KKKKSSSSOOHHHHHHOOOOOOWWWWWWWWK.......",
+        "..........KSSSSSSSOOOOOOOOOOOOOWWWWWWWK.........",
+        "...........KSSSSSOOOOOOOOOWWWWWWWWWWK...........",
+        "...........KMMK.KDDKKOOOOCCCCWWWWCK.............",
+        "..........KMMMK.KDDDKKKKKKMMK.KDDK..............",
+        "..........KKKK..KKKKK....KMMMKKKKDK.............",
+        ".........................KKKK.KKKK..............",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const BEAR_WAVE_1 = [
+        "................................................",
+        ".............KKKKK.........KKKKK................",
+        "...........KKDOOOOKK.....KKDOOOOKK..............",
+        "..........KDOOOOOOOOK...KDOOOOOOOOK.............",
+        "..........KDOOPPPPOODK.KDOOPPPPOODK.............",
+        "..........KDOOPWWPOODK.KDOOPWWPOODK.............",
+        "..........KDOOOOOOOODKKKDOOOOOOOODK.............",
+        "...........KDOOOOOOHYYYYYHOOOOOODK..............",
+        "..........KDOOOOOOHYYYYYYYHOOOOOODK.............",
+        ".........KOOOOOOOOHHHHHHHHHYYHOOOOOK............",
+        "........KOOOOOOOOHHHHHHHNNNNNNHOOOOOK...........",
+        ".......KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK..........",
+        ".......KOOOOOOOOHHHHHHNNGGGBBNHOOOOOOK..........",
+        "......KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.........",
+        "......KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.........",
+        "......KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK........",
+        "......KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK........",
+        ".......KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK.KKKK...",
+        ".......KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK.KDDDDK..",
+        "........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK..KDOOOOOK.",
+        ".........KSSSOOOOOOOOOOOOOSSSSKKKK....KOOOOOOOK.",
+        ".......KKKKKSSSSOOOOOOOOOOOOOOOWWWWK.KOOOOOOOK..",
+        "......KOOOOKSOOOOOOOOOOOOOOOOOWWWWWWKOOOOOOOK...",
+        ".....KOOOOOHKSOOOOOHHHHHHOOOOOOWWWWWWWOOOOOK....",
+        ".....KOOOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWKKKKK.....",
+        "......KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWK.........",
+        "........KKKKSSSSOOHHHHHHOOOOOOWWWWWWWWK.........",
+        "........KSSSSSSSOOOOOOOOOOOOOWWWWWWWWK..........",
+        ".........KSSSSSOOOOOOOOOWWWWWWWWWWWWK...........",
+        ".........KKKKDDDDKKKKKKOOOOCCCCWWWWCK...........",
+        ".............KDDDDDK...KKKKDDDDDDKKK............",
+        ".............KKKKKK........KKKKKK...............",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const BEAR_WAVE_2 = [
+        "................................................",
+        ".............KKKKK.........KKKKK................",
+        "...........KKDOOOOKK.....KKDOOOOKK..............",
+        "..........KDOOOOOOOOK...KDOOOOOOOOK.............",
+        "..........KDOOPPPPOODK.KDOOPPPPOODK.............",
+        "..........KDOOPWWPOODK.KDOOPWWPOODK.............",
+        "..........KDOOOOOOOODKKKDOOOOOOOODK.............",
+        "...........KDOOOOOOHYYYYYHOOOOOODK..............",
+        "..........KDOOOOOOHYYYYYYYHOOOOOODK.............",
+        ".........KOOOOOOOOHHHHHHHHHYYHOOOOOK............",
+        "........KOOOOOOOOHHHHHHHSSSSSSHOOOOOK...........",
+        ".......KOOOOOOOOHHHHHHHOOOOOOOHOOOOOOK..........",
+        ".......KOOOOOOOOHHHHHHHNNNNNNNHOOOOOOK..........",
+        "......KOOOOOOOOOHHHHHHHHBBBBEEBHOOOOOOK.........",
+        "......KOOOOOOOOOHHHHHHHHBEEEEAAHOOOOOOK.........",
+        "......KSOOOOOOOOOHHHHHHHEEAAAAGHWWWWONNK........",
+        "......KSOOOOOOOOOOHHRRRHEAAAAGWWWWWWONNK........",
+        ".......KSOOOOOOOOOOHRRRHOHAAAAWWWWWWWWKK........",
+        ".......KSSOOOOOOOOOOHHHHHHWWWWWWWWWWWKK...KKKK..",
+        "........KSSOOOOOOOOOOOOOOOCCCCCCCCKKK....KDDDDK.",
+        ".......KKKKKSSSOOOOOOOOOOOSSSSKKKK......KDOOOOOK",
+        "......KOOOOKSSSSOOOOOOOOOOOOOOOWWWWK...KOOOOOOOK",
+        ".....KOOOOOHKSOOOOOOOOOOOOOOOOOWWWWWWK.KOOOOOOK.",
+        ".....KOOOOOOKSOOOOOHHHHHHOOOOOOWWWWWWWKOOOOOOK..",
+        "......KKOOOOKOOOOOOOOOOOOOOOOWWWWWWWWWOOOOOK....",
+        "........KKKKKOOOOOOOOOOOOOOOOWWWWWWWWWKKKKK.....",
+        "........KSSSSSSSOOHHHHHHOOOOOOWWWWWWWWK.........",
+        "........KSSSSSSSOOOOOOOOOOOOOWWWWWWWWK..........",
+        ".........KSSSSSOOOOOOOOOWWWWWWWWWWWWK...........",
+        ".........KKKKDDDDKKKKKKOOOOCCCCWWWWCK...........",
+        ".............KDDDDDK...KKKKDDDDDDKKK............",
+        ".............KKKKKK........KKKKKK...............",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
       const SPRITE_W = 48;
       const SPRITE_H = 36;
       const WIDTH = SPRITE_W * SCALE;
       const HEIGHT = SPRITE_H * SCALE;
 
-      const actor = document.getElementById("fox-actor");
-      const canvas = document.getElementById("fox-canvas");
-      const bubble = document.getElementById("fox-bubble");
-      const ctx = canvas.getContext("2d");
+      const foxActor = document.getElementById("fox-actor");
+      const foxCanvas = document.getElementById("fox-canvas");
+      const foxBubble = document.getElementById("fox-bubble");
+      const foxCtx = foxCanvas.getContext("2d");
 
-      canvas.width = WIDTH;
-      canvas.height = HEIGHT;
-      actor.style.width = WIDTH + "px";
-      actor.style.height = HEIGHT + "px";
+      const bearActor = document.getElementById("bear-actor");
+      const bearCanvas = document.getElementById("bear-canvas");
+      const bearBubble = document.getElementById("bear-bubble");
+      const bearCtx = bearCanvas.getContext("2d");
+
+      [foxCanvas, bearCanvas].forEach((c) => {
+        c.width = WIDTH;
+        c.height = HEIGHT;
+      });
+      [foxActor, bearActor].forEach((a) => {
+        a.style.width = WIDTH + "px";
+        a.style.height = HEIGHT + "px";
+      });
 
       function bottomY() {
         return Math.max(EDGE_PAD, window.innerHeight - HEIGHT - EDGE_PAD);
       }
 
-      let x = ROAM === "fixed" ? Math.round((window.innerWidth - WIDTH) / 2) : 120;
+      let x = ROAM === "fixed" ? Math.round((window.innerWidth - WIDTH) / 2) : 160;
       let y = bottomY();
       let targetX = Math.min(window.innerWidth - WIDTH - EDGE_PAD, 520);
       let targetY = y;
@@ -461,16 +699,48 @@
       let frameTick = 0;
       let jumpY = 0;
       let jumpVy = 0;
-      let bubbleTimer = null;
+      let foxBubbleTimer = null;
 
-      function showBubble(text, ms = 1600) {
+      // Bear friend state
+      // States: "hidden", "enter", "greet", "leave"
+      let bearState = "hidden";
+      let bearX = -WIDTH - 20;
+      let bearY = y;
+      let bearFacingRight = true;
+      let bearTimer = 12 * 60; // First visit ~12 seconds after load!
+      let bearExitX = -WIDTH - 30;
+      let bearBubbleTimer = null;
+
+      function showFoxBubble(text, ms = 1600) {
         if (!SHOW_BUBBLES) return;
-        bubble.textContent = text;
-        bubble.classList.add("visible");
-        if (bubbleTimer) clearTimeout(bubbleTimer);
-        bubbleTimer = setTimeout(() => {
-          bubble.classList.remove("visible");
+        foxBubble.textContent = text;
+        foxBubble.classList.add("visible");
+        if (foxBubbleTimer) clearTimeout(foxBubbleTimer);
+        foxBubbleTimer = setTimeout(() => {
+          foxBubble.classList.remove("visible");
         }, ms);
+      }
+
+      function showBearBubble(text, ms = 1800) {
+        if (!SHOW_BUBBLES) return;
+        bearBubble.textContent = text;
+        bearBubble.classList.add("visible");
+        if (bearBubbleTimer) clearTimeout(bearBubbleTimer);
+        bearBubbleTimer = setTimeout(() => {
+          bearBubble.classList.remove("visible");
+        }, ms);
+      }
+
+      function startBearVisit() {
+        if (BEAR_SETTING === "0" || bearState !== "hidden") return;
+        const fromLeft = x > window.innerWidth * 0.5;
+        bearX = fromLeft ? -WIDTH - 10 : window.innerWidth + 10;
+        bearExitX = fromLeft ? -WIDTH - 20 : window.innerWidth + 20;
+        bearY = y;
+        bearFacingRight = fromLeft;
+        bearState = "enter";
+        bearTimer = 600;
+        bearActor.style.display = "block";
       }
 
       function pickDestination() {
@@ -486,13 +756,13 @@
         }
       }
 
-      function drawSprite(grid, flipX) {
+      function drawSprite(ctx, palette, grid, flipX) {
         ctx.clearRect(0, 0, WIDTH, HEIGHT);
         for (let r = 0; r < SPRITE_H; r++) {
           const row = grid[r];
           for (let c = 0; c < SPRITE_W; c++) {
             const ch = row[c];
-            const color = PALETTE[ch];
+            const color = palette[ch];
             if (!color) continue;
             const drawC = flipX ? (SPRITE_W - 1 - c) : c;
             ctx.fillStyle = color;
@@ -511,30 +781,128 @@
         }
       });
 
-      // Interactive click support (works in OBS "Interact" window too!)
-      actor.addEventListener("click", () => {
+      // Press 'B' anytime to summon the Bear friend!
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "b" || e.key === "B") {
+          startBearVisit();
+        }
+      });
+
+      foxActor.addEventListener("click", () => {
         if (LOCKED_MODE !== "auto") return;
         mode = "jump";
         jumpVy = -9.0;
         modeTimer = 180;
         pickDestination();
         const quips = ["♥ Yip!", "★ Boing!", "♥ *wag*", "⚡ Zoom!"];
-        showBubble(quips[Math.floor(Math.random() * quips.length)]);
+        showFoxBubble(quips[Math.floor(Math.random() * quips.length)]);
       });
 
-      actor.addEventListener("contextmenu", (e) => {
+      bearActor.addEventListener("click", () => {
+        const greetings = ["👋 Hewwo!", "🍯 Honey time!", "♥ Bear hug!", "✨ Rawr!"];
+        showBearBubble(greetings[Math.floor(Math.random() * greetings.length)], 1800);
+      });
+
+      foxActor.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         if (mode === "sleep") {
           mode = "walk";
           modeTimer = 200;
           pickDestination();
-          showBubble("! Awake!");
+          showFoxBubble("! Awake!");
         } else {
           mode = "sleep";
           modeTimer = 420;
-          showBubble("Zzz...", 2400);
+          showFoxBubble("Zzz...", 2400);
         }
       });
+
+      function stepBear() {
+        if (BEAR_SETTING === "0") return;
+
+        if (bearState === "hidden") {
+          bearTimer--;
+          if (bearTimer <= 0) {
+            startBearVisit();
+          }
+          return;
+        }
+
+        const spacing = Math.round(WIDTH * 0.78);
+        const desiredX = bearX < x ? Math.max(EDGE_PAD, x - spacing) : Math.min(window.innerWidth - WIDTH - EDGE_PAD, x + spacing);
+        const desiredY = y;
+
+        if (bearState === "enter") {
+          const dx = desiredX - bearX;
+          const dy = desiredY - bearY;
+          const dist = Math.hypot(dx, dy);
+          const speed = 1.65 * SPEED_MULT;
+
+          if (dist <= 6) {
+            bearState = "greet";
+            bearTimer = BEAR_SETTING === "always" ? 999999 : 300; // ~5 seconds of waving/chatting
+            bearFacingRight = x > bearX;
+
+            const bearGreets = ["👋 Hewwo Fox!", "🍯 Brought honey!", "♥ Hiya friend!", "✨ Rawr! Hi!"];
+            showBearBubble(bearGreets[Math.floor(Math.random() * bearGreets.length)], 2200);
+
+            // Fox turns to face Bear and says hi back!
+            facingRight = bearX > x;
+            if (LOCKED_MODE === "auto" && mode !== "sleep") {
+              mode = "sit";
+              modeTimer = Math.max(modeTimer, 220);
+              jumpVy = -5.5;
+            }
+            setTimeout(() => {
+              const foxReplies = mode === "sleep"
+                ? ["💤 *sleepy wag*", "♥ zZz... hi Bear!"]
+                : ["♥ Hi Bear!", "★ Yip yip!", "♥ *happy wag*", "🍯 Yay!"];
+              showFoxBubble(foxReplies[Math.floor(Math.random() * foxReplies.length)], 2000);
+            }, 750);
+          } else {
+            bearX += (dx / dist) * speed;
+            bearY += (dy / dist) * speed;
+            bearFacingRight = dx > 0;
+          }
+        } else if (bearState === "greet") {
+          bearFacingRight = x > bearX;
+          if (LOCKED_MODE === "auto" && mode === "sit") {
+            facingRight = bearX > x;
+          }
+          bearTimer--;
+          if (bearTimer <= 0 && BEAR_SETTING !== "always") {
+            bearState = "leave";
+            const byes = ["👋 Bye-bye!", "🐾 See ya soon!", "🍯 Off I trot!"];
+            showBearBubble(byes[Math.floor(Math.random() * byes.length)], 1800);
+          }
+        } else if (bearState === "leave") {
+          const dx = bearExitX - bearX;
+          const speed = 1.6 * SPEED_MULT;
+          if (Math.abs(dx) <= 8) {
+            bearState = "hidden";
+            bearActor.style.display = "none";
+            // Next visit in BEAR_INTERVAL_SEC +/- 30%
+            const jitter = 0.7 + Math.random() * 0.6;
+            bearTimer = Math.round(BEAR_INTERVAL_SEC * 60 * jitter);
+            return;
+          }
+          bearX += Math.sign(dx) * speed;
+          bearFacingRight = dx > 0;
+        }
+
+        let bearSprite = BEAR_WALK_1;
+        if (bearState === "greet") {
+          const waveCycle = Math.floor(frameTick / 16) % 2 === 0;
+          bearSprite = waveCycle ? BEAR_WAVE_1 : BEAR_WAVE_2;
+        } else {
+          const walkCycle = Math.floor(frameTick / 7) % 4;
+          bearSprite = [BEAR_WALK_1, BEAR_WALK_2, BEAR_WALK_3, BEAR_WALK_2][walkCycle];
+        }
+
+        drawSprite(bearCtx, BEAR_PALETTE, bearSprite, !bearFacingRight);
+        bearActor.style.left = Math.round(bearX) + "px";
+        bearActor.style.top = Math.round(bearY) + "px";
+      }
 
       function step() {
         frameTick++;
@@ -557,7 +925,13 @@
           mode = "sit";
         }
 
-        if (mode === "walk" || mode === "jump") {
+        // Pause walking while greeting the Bear so they chat face-to-face
+        const chattingWithBear = bearState === "greet" && LOCKED_MODE === "auto" && mode !== "sleep";
+
+        if (chattingWithBear) {
+          mode = "sit";
+          facingRight = bearX > x;
+        } else if (mode === "walk" || mode === "jump") {
           modeTimer--;
           const dx = targetX - x;
           const dy = targetY - y;
@@ -570,7 +944,7 @@
             } else {
               mode = Math.random() < 0.32 ? "sleep" : "sit";
               modeTimer = mode === "sleep" ? 280 + Math.random() * 220 : 120 + Math.random() * 140;
-              if (mode === "sleep") showBubble("Zzz...", 2200);
+              if (mode === "sleep") showFoxBubble("Zzz...", 2200);
             }
           } else {
             const baseSpeed = (mode === "jump" ? 3.5 : 1.45) * SPEED_MULT;
@@ -587,7 +961,7 @@
               if (Math.random() < 0.28) {
                 mode = "sleep";
                 modeTimer = 320 + Math.random() * 180;
-                showBubble("Zzz...", 2200);
+                showFoxBubble("Zzz...", 2200);
               } else if (ROAM !== "fixed") {
                 mode = "walk";
                 modeTimer = 240;
@@ -598,7 +972,7 @@
             }
           }
         } else if (mode === "sleep") {
-          if (frameTick % 140 === 0) showBubble("zZz...", 1600);
+          if (frameTick % 140 === 0) showFoxBubble("zZz...", 1600);
           if (LOCKED_MODE === "auto") {
             modeTimer--;
             if (modeTimer <= 0) {
@@ -623,9 +997,11 @@
           sprite = breathe ? SLEEP_1 : SLEEP_2;
         }
 
-        drawSprite(sprite, !facingRight);
-        actor.style.left = Math.round(x) + "px";
-        actor.style.top = Math.round(y + jumpY) + "px";
+        drawSprite(foxCtx, FOX_PALETTE, sprite, !facingRight);
+        foxActor.style.left = Math.round(x) + "px";
+        foxActor.style.top = Math.round(y + jumpY) + "px";
+
+        stepBear();
 
         requestAnimationFrame(step);
       }
