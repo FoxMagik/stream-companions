@@ -73,6 +73,12 @@
 </head>
 <body>
   <div id="fox-stage">
+    <div id="butterfly-actor" class="companion-actor" style="display: none; pointer-events: none;">
+      <canvas id="butterfly-canvas" class="companion-canvas"></canvas>
+    </div>
+    <div id="ball-actor" class="companion-actor" style="display: none; pointer-events: none;">
+      <canvas id="ball-canvas" class="companion-canvas"></canvas>
+    </div>
     <div id="bear-actor" class="companion-actor" style="display: none;">
       <div id="bear-bubble" class="companion-bubble"></div>
       <canvas id="bear-canvas" class="companion-canvas"></canvas>
@@ -130,7 +136,9 @@
         "B": "#0e2f70", // Deep starry navy upper iris
         "E": "#1f7ae0", // Vibrant sky-sapphire mid iris
         "A": "#66ecff", // Glowing crystal-aqua lower iris
-        "G": "#ffffff"  // Pure white eye sparkle
+        "G": "#ffffff", // Pure white eye sparkle
+        "V": "#c77dff", // Butterfly lavender-violet
+        "Z": "#ff4d6d"  // Ball / Butterfly vibrant coral-red
       };
 
       const BEAR_PALETTE = {
@@ -150,7 +158,9 @@
         "B": "#0e2f70", // Deep starry navy upper iris
         "E": "#1f7ae0", // Vibrant sky-sapphire mid iris
         "A": "#66ecff", // Glowing crystal-aqua lower iris
-        "G": "#ffffff"  // Pure white eye sparkle
+        "G": "#ffffff", // Pure white eye sparkle
+        "V": "#c77dff", // Butterfly lavender-violet
+        "Z": "#ff4d6d"  // Ball / Butterfly vibrant coral-red
       };
 
       const WALK_1 = [
@@ -465,6 +475,155 @@
         "................................................"
       ];
 
+      // Happy Fox Dance Frames (48x36)
+      const DANCE_1 = [
+        ".................KK...........KK................",
+        "................KDDK.........KDDK...............",
+        "...............KDDDDK.......KDDDDK..............",
+        "....KKKKKK.....KDDDDDK.....KDDDDDDK.............",
+        "..KKWWWWWWKK..KDDPPDDDK...KDDPPPDDK.............",
+        ".KWWWWWWWWWWK.KDDPPPPDOK.KDDPPPPDDK.............",
+        "KWWWWWWWWWWWWKKDPPPPPDOKKDPPPPPPDK..............",
+        "KWWWWWWWWWWWOHKDOOWWWOOOOOOWWWWODK..............",
+        "KWWWWWWWWWWOHHSKDOOWWWWOHYYYYHOWWWOOOK..........",
+        ".KWWWWWWWWOHHHSSKDOOOOOOHYYYYYYHOOOOOOK.........",
+        "..KWWWWWWOHHHHSSKOOOOOOOOHHHHHHHHHYYHOOOOK......",
+        "...KWWWWOHHHHHSSKOOOOOOHHHHHHHNNNNNNHOOOK.......",
+        "....KWWOHHHHHHSSKOOOOOHHHHHHNNHHHHHHNHOOOK......",
+        ".....KOOHHHHHHSSKOOOOHHHHHHNHHHHHHHHNHHOOOK.....",
+        "......KOOOHHHHSSKOOOHWWHHHHNHHHHHHHHNHOOOK......",
+        ".......KOOOHHHSSKOOWWWWWHHHHHHHHHHHHHWWONNK.....",
+        "........KOOOHHSSKWWWWWWWWHHHRRRHHHHWWWWONNK.....",
+        ".........KOOOHSSKKWWWWWWWRRRRRRWWWWWWWWWWKK.....",
+        "..........KOOOOHSK.KWWWWWWWWWWWWWWWWWWWWK.......",
+        "..........KOOOOOOK..KKWWWWWWWWWWWWWWWWKK........",
+        "..........KOOOOOOOK...KSSSSCCCCWWWWWWKK..KKK....",
+        "...........KOOOOOOOK.KSOOOOOOOOWWWWWWWK.KDDDK...",
+        "...........KOOOOOOOOHHHHHHOOOOOWWWWWWWKKDDDDK...",
+        "............KOOOOOOOOOOOOOOOOOOWWWWWWWWWWDDK....",
+        ".............KSSOOHHHHHHOOOOOOWWWWWWWWWWWKK.....",
+        "..............KSSOOOOOOOOOOOOOWWWWWWWWWWKKK.....",
+        "...............KSSOOOOOOWWWWWWWWWWWWWWKMMK......",
+        "...............KDDK..KKKKCCCCWWWWCCCCKMMMK......",
+        "..............KDDDDK.....KKKKKDDK....KKKK.......",
+        ".............KDDDDDK........KDDDDK..............",
+        ".............KKKKKK.........KKKKK...............",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      const DANCE_2 = [
+        "................................................",
+        "..................KK...........KK...............",
+        ".................KDDK.........KDDK..............",
+        "................KDDDDK.......KDDDDK.............",
+        "................KDDDDDK.....KDDDDDDK............",
+        "...............KDDPPDDDK...KDDPPPDDK............",
+        "...............KDDPPPPDOK.KDDPPPPDDK............",
+        "...............KDPPPPPDOKKDPPPPPPDK.............",
+        ".....KKKKKK....KDOOWWWOOOOOOWWWWODK.............",
+        "...KKWWWWWWKK.KDOOWWWWOHYYYYHOWWWOOOK...........",
+        "..KWWWWWWWWWWKKDOOOOOOOHYYYYYYHOOOOOOK..........",
+        ".KWWWWWWWWWWWOHKOOOOOOOOHHHHHHHHHYYHOOOOK.......",
+        ".KWWWWWWWWWWOHHSKOOOOOOHHHHHHHNNNNNNHOOOK.......",
+        "..KWWWWWWWWOHHHSSKOOOOOHHHHHHNNGGGBBNHOOOK......",
+        "...KWWWWWWOHHHHSSKOOOOHHHHHHHNNGGGBBNHOOOK......",
+        "....KWWWWOHHHHHSSKOOOHWWHHHHHHBBBBEEBHOOOK......",
+        ".....KWWOHHHHHHSSKOOWWWWWHHHHHBEEEEAAHOOOK......",
+        "......KOOHHHHHHSSKWWWWWWWWHHHHEEAAAAGHWWONNK....",
+        ".......KOOOHHHHSSKKWWWWWWWRRRHEAAAAGWWWWONNK....",
+        "........KOOOHHHSSK.KWWWWWWRRRWWAAAAWWWWWWWKK....",
+        ".........KOOOHHSSK..KWWWWWWWWWWWWWWWWWWWWK..KKK.",
+        ".........KOOOOHHSK...KKWWWWWWWWWWWWWWWWKK..KDDDK",
+        "..........KOOOOHSSK..KSSSSCCCCWWWWWWWWKK..KDDDDK",
+        "..........KOOOOOHSSKKSOOOOOOOOWWWWWWWWWKKKDDDDK.",
+        "...........KOOOOHHHHHHOOOOOOOOWWWWWWWWWWWWWKK...",
+        "...........KOOOOOOOOOOOOOOOOOOWWWWWWWWWWWKK.....",
+        "............KSSOOHHHHHHOOOOOOWWWWWWWWWWWK.......",
+        ".............KSSOOOOOOOOOOOOOWWWWWWWWWWK........",
+        "..............KSSOOOOOOWWWWWWWWWWWWWWWK.........",
+        ".............KMMK..KKKKCCCCWWWWCCCKDDK..........",
+        "............KMMMK......KKKKKKKKK..KDDDDK........",
+        "............KKKK..................KKKKK.........",
+        "................................................",
+        "................................................",
+        "................................................",
+        "................................................"
+      ];
+
+      // 16x14 Butterfly Sprites
+      const BUTTERFLY_1 = [
+        "..KKKK....KKKK..",
+        ".KAAAAK..KAAAAK.",
+        "KAAAGGAKKAGGAAAK",
+        "KAAGGGAKKAGGGAAK",
+        "KAAAGVVKKVVGAAAK",
+        ".KAAVVVKKVVVAAK.",
+        "..KKKKKNNKKKKK..",
+        "..KVVVVNNVVVVK..",
+        ".KVVYYYNNYYYVVK.",
+        ".KVVYYYNNYYYVVK.",
+        "..KVVVVKKVVVVK..",
+        "...KKKK..KKKK...",
+        "................",
+        "................"
+      ];
+
+      const BUTTERFLY_2 = [
+        ".....KKKKKK.....",
+        "....KAAAAAAK....",
+        "...KAAAGGAAAK...",
+        "...KAAGGGAAAK...",
+        "....KAAVVAAK....",
+        "....KVVNNVVK....",
+        ".....KNNNNK.....",
+        "....KVVNNVVK....",
+        "....KVYNNYVK....",
+        ".....KVKKVK.....",
+        "......KKKK......",
+        "................",
+        "................",
+        "................"
+      ];
+
+      // 14x14 Bouncy Toy Ball Sprites
+      const BALL_1 = [
+        "....KKKKKK....",
+        "..KKZZZZZZKK..",
+        ".KZZZGGGGZZZK.",
+        ".KZZGGGGZZZZK.",
+        "KZZZZGGWWWWWWK",
+        "KZZZZWWWWWWWWK",
+        "KZZWWWWYYYYWWK",
+        "KWWWWYYYYYYYYK",
+        "KWWYYYYYYYYYYK",
+        "KYYYYYYYYZZZZK",
+        ".KYYYYZZZZZZK.",
+        ".KZZZZZZZZZZK.",
+        "..KKZZZZZZKK..",
+        "....KKKKKK...."
+      ];
+
+      const BALL_2 = [
+        "....KKKKKK....",
+        "..KKYYYYYYKK..",
+        ".KYYYGGGGYYYK.",
+        ".KYYGGGGYYYYK.",
+        "KYYYYGGWWWWWWK",
+        "KYYYYWWWWWWWWK",
+        "KYYWWWWZZZZWWK",
+        "KWWWWZZZZZZZZK",
+        "KWWZZZZZZZZZZK",
+        "KZZZZZZZZYYYYK",
+        ".KZZZZYYYYYYK.",
+        ".KYYYYYYYYYYK.",
+        "..KKYYYYYYKK..",
+        "....KKKKKK...."
+      ];
+
       // 48x36 Chibi Bear Friend Sprites
       const BEAR_WALK_1 = [
         "................................................",
@@ -676,6 +835,22 @@
       const bearBubble = document.getElementById("bear-bubble");
       const bearCtx = bearCanvas.getContext("2d");
 
+      const butterflyActor = document.getElementById("butterfly-actor");
+      const butterflyCanvas = document.getElementById("butterfly-canvas");
+      const butterflyCtx = butterflyCanvas.getContext("2d");
+      butterflyCanvas.width = 16 * SCALE;
+      butterflyCanvas.height = 14 * SCALE;
+      butterflyActor.style.width = (16 * SCALE) + "px";
+      butterflyActor.style.height = (14 * SCALE) + "px";
+
+      const ballActor = document.getElementById("ball-actor");
+      const ballCanvas = document.getElementById("ball-canvas");
+      const ballCtx = ballCanvas.getContext("2d");
+      ballCanvas.width = 14 * SCALE;
+      ballCanvas.height = 14 * SCALE;
+      ballActor.style.width = (14 * SCALE) + "px";
+      ballActor.style.height = (14 * SCALE) + "px";
+
       [foxCanvas, bearCanvas].forEach((c) => {
         c.width = WIDTH;
         c.height = HEIGHT;
@@ -695,11 +870,27 @@
       let targetY = y;
       let facingRight = true;
       let mode = LOCKED_MODE === "auto" ? "walk" : LOCKED_MODE;
-      let modeTimer = 220;
+      let modeTimer = 180;
       let frameTick = 0;
+      let clickCycle = 0;
       let jumpY = 0;
       let jumpVy = 0;
       let foxBubbleTimer = null;
+
+      // Butterfly state
+      let bfX = 300;
+      let bfY = 300;
+      let bfBaseY = 300;
+      let bfVx = 2.0;
+      let bfPhase = 0;
+
+      // Bouncy Ball state
+      let ballX = 300;
+      let ballY = 300;
+      let ballVx = 4.0;
+      let ballVy = 0;
+      let ballFloorY = 400;
+      let ballBoopsLeft = 4;
 
       // Bear friend state
       // States: "hidden", "enter", "greet", "leave"
@@ -731,6 +922,74 @@
         }, ms);
       }
 
+      function startDance() {
+        butterflyActor.style.display = "none";
+        ballActor.style.display = "none";
+        mode = "dance";
+        modeTimer = 240;
+        showFoxBubble("♪ ♫ *boogie* ♫ ♪", 1800);
+      }
+
+      function startButterflyChase() {
+        ballActor.style.display = "none";
+        butterflyActor.style.display = "block";
+        mode = "butterfly";
+        modeTimer = 320;
+        const goRight = x < window.innerWidth * 0.5;
+        bfX = Math.max(60, Math.min(window.innerWidth - 90, x + (goRight ? 150 : -150)));
+        bfBaseY = Math.max(60, y - Math.round(16 * SCALE));
+        bfY = bfBaseY;
+        bfVx = (goRight ? 1.9 : -1.9) * SPEED_MULT;
+        bfPhase = 0;
+        showFoxBubble("🦋 Oooh!", 1600);
+      }
+
+      function startBallPlay() {
+        butterflyActor.style.display = "none";
+        ballActor.style.display = "block";
+        mode = "ball";
+        modeTimer = 340;
+        const dir = x < window.innerWidth * 0.5 ? 1 : -1;
+        ballX = x + dir * Math.round(WIDTH * 0.75);
+        ballFloorY = y + HEIGHT - (14 * SCALE) - (3 * SCALE);
+        ballY = y - (16 * SCALE);
+        ballVx = dir * 3.4 * SPEED_MULT;
+        ballVy = -3.8;
+        ballBoopsLeft = 4;
+        showFoxBubble("⚽ Playtime!", 1600);
+      }
+
+      function pickNextActivity() {
+        if (ROAM === "fixed") {
+          const rFixed = Math.random();
+          if (rFixed < 0.35) startDance();
+          else if (rFixed < 0.70) {
+            mode = "sit";
+            modeTimer = 180;
+          } else {
+            mode = "sleep";
+            modeTimer = 280;
+            showFoxBubble("Zzz...", 2200);
+          }
+          return;
+        }
+        const r = Math.random();
+        if (r < 0.24) {
+          startButterflyChase();
+        } else if (r < 0.48) {
+          startBallPlay();
+        } else if (r < 0.68) {
+          startDance();
+        } else if (r < 0.84) {
+          mode = "sit";
+          modeTimer = 140 + Math.random() * 100;
+        } else {
+          mode = "sleep";
+          modeTimer = 280 + Math.random() * 140;
+          showFoxBubble("Zzz...", 2200);
+        }
+      }
+
       function startBearVisit() {
         if (BEAR_SETTING === "0" || bearState !== "hidden") return;
         const fromLeft = x > window.innerWidth * 0.5;
@@ -757,14 +1016,16 @@
       }
 
       function drawSprite(ctx, palette, grid, flipX) {
-        ctx.clearRect(0, 0, WIDTH, HEIGHT);
-        for (let r = 0; r < SPRITE_H; r++) {
+        const h = grid.length;
+        const w = grid[0].length;
+        ctx.clearRect(0, 0, w * SCALE, h * SCALE);
+        for (let r = 0; r < h; r++) {
           const row = grid[r];
-          for (let c = 0; c < SPRITE_W; c++) {
+          for (let c = 0; c < w; c++) {
             const ch = row[c];
             const color = palette[ch];
             if (!color) continue;
-            const drawC = flipX ? (SPRITE_W - 1 - c) : c;
+            const drawC = flipX ? (w - 1 - c) : c;
             ctx.fillStyle = color;
             ctx.fillRect(drawC * SCALE, r * SCALE, SCALE, SCALE);
           }
@@ -781,21 +1042,34 @@
         }
       });
 
-      // Press 'B' anytime to summon the Bear friend!
+      // Keyboard shortcuts: B = Bear, D = Dance, F = Butterfly, P = Play Ball
       window.addEventListener("keydown", (e) => {
-        if (e.key === "b" || e.key === "B") {
-          startBearVisit();
-        }
+        const k = e.key.toLowerCase();
+        if (k === "b") startBearVisit();
+        else if (k === "d") startDance();
+        else if (k === "f") startButterflyChase();
+        else if (k === "p") startBallPlay();
       });
 
       foxActor.addEventListener("click", () => {
         if (LOCKED_MODE !== "auto") return;
-        mode = "jump";
-        jumpVy = -9.0;
-        modeTimer = 180;
-        pickDestination();
-        const quips = ["♥ Yip!", "★ Boing!", "♥ *wag*", "⚡ Zoom!"];
-        showFoxBubble(quips[Math.floor(Math.random() * quips.length)]);
+        clickCycle = (clickCycle + 1) % 4;
+        if (clickCycle === 1) {
+          startButterflyChase();
+        } else if (clickCycle === 2) {
+          startBallPlay();
+        } else if (clickCycle === 3) {
+          startDance();
+        } else {
+          butterflyActor.style.display = "none";
+          ballActor.style.display = "none";
+          mode = "jump";
+          jumpVy = -9.0;
+          modeTimer = 180;
+          pickDestination();
+          const quips = ["♥ Yip!", "★ Boing!", "♥ *wag*", "⚡ Zoom!"];
+          showFoxBubble(quips[Math.floor(Math.random() * quips.length)]);
+        }
       });
 
       bearActor.addEventListener("click", () => {
@@ -805,6 +1079,8 @@
 
       foxActor.addEventListener("contextmenu", (e) => {
         e.preventDefault();
+        butterflyActor.style.display = "none";
+        ballActor.style.display = "none";
         if (mode === "sleep") {
           mode = "walk";
           modeTimer = 200;
@@ -849,14 +1125,20 @@
             // Fox turns to face Bear and says hi back!
             facingRight = bearX > x;
             if (LOCKED_MODE === "auto" && mode !== "sleep") {
-              mode = "sit";
-              modeTimer = Math.max(modeTimer, 220);
-              jumpVy = -5.5;
+              if (Math.random() < 0.45) {
+                startDance();
+              } else {
+                butterflyActor.style.display = "none";
+                ballActor.style.display = "none";
+                mode = "sit";
+                modeTimer = Math.max(modeTimer, 220);
+                jumpVy = -5.5;
+              }
             }
             setTimeout(() => {
               const foxReplies = mode === "sleep"
                 ? ["💤 *sleepy wag*", "♥ zZz... hi Bear!"]
-                : ["♥ Hi Bear!", "★ Yip yip!", "♥ *happy wag*", "🍯 Yay!"];
+                : ["♥ Hi Bear!", "★ Yip yip!", "♪ Let's dance!", "🍯 Yay!"];
               showFoxBubble(foxReplies[Math.floor(Math.random() * foxReplies.length)], 2000);
             }, 750);
           } else {
@@ -904,6 +1186,10 @@
         bearActor.style.top = Math.round(bearY) + "px";
       }
 
+      if (LOCKED_MODE === "butterfly") startButterflyChase();
+      else if (LOCKED_MODE === "ball") startBallPlay();
+      else if (LOCKED_MODE === "dance") startDance();
+
       function step() {
         frameTick++;
 
@@ -917,8 +1203,11 @@
           }
         }
 
-        if (LOCKED_MODE !== "auto") {
-          mode = LOCKED_MODE;
+        if (LOCKED_MODE !== "auto" && mode !== LOCKED_MODE) {
+          if (LOCKED_MODE === "butterfly") startButterflyChase();
+          else if (LOCKED_MODE === "ball") startBallPlay();
+          else if (LOCKED_MODE === "dance") startDance();
+          else mode = LOCKED_MODE;
         }
 
         if (ROAM === "fixed" && (mode === "walk" || mode === "jump")) {
@@ -926,11 +1215,108 @@
         }
 
         // Pause walking while greeting the Bear so they chat face-to-face
-        const chattingWithBear = bearState === "greet" && LOCKED_MODE === "auto" && mode !== "sleep";
+        const chattingWithBear = bearState === "greet" && LOCKED_MODE === "auto" && mode !== "sleep" && mode !== "dance";
 
         if (chattingWithBear) {
           mode = "sit";
           facingRight = bearX > x;
+        } else if (mode === "butterfly") {
+          modeTimer--;
+          bfPhase++;
+          bfX += bfVx;
+          if (bfX < EDGE_PAD + 20 || bfX > window.innerWidth - (16 * SCALE) - EDGE_PAD - 20) bfVx = -bfVx;
+          if (LOCKED_MODE === "auto" && modeTimer < 60) bfBaseY -= 2.2;
+          bfY = bfBaseY + Math.sin(bfPhase * 0.14) * (9 * SCALE);
+
+          const bfx = (bfX - Math.round(WIDTH * 0.3)) - x;
+          const bfy = (ROAM === "full" ? Math.min(bottomY(), bfBaseY + Math.round(HEIGHT * 0.45)) : bottomY()) - y;
+          const bfDist = Math.hypot(bfx, bfy);
+          if (bfDist > 6) {
+            x += (bfx / bfDist) * 2.2 * SPEED_MULT;
+            y += (bfy / bfDist) * 1.4 * SPEED_MULT;
+            if (Math.abs(bfx) > 0.2) facingRight = bfx > 0;
+          }
+          if (bfDist < Math.round(WIDTH * 0.45) && jumpY === 0 && modeTimer > 60 && frameTick % 36 === 0) {
+            jumpVy = -8.2;
+            const bfQuips = ["🦋 Boop!", "✨ Flutter!", "★ Almost!", "♥ Wheee!"];
+            showFoxBubble(bfQuips[Math.floor(Math.random() * bfQuips.length)]);
+          }
+
+          const bfSprite = Math.floor(frameTick / 5) % 2 === 0 ? BUTTERFLY_1 : BUTTERFLY_2;
+          drawSprite(butterflyCtx, FOX_PALETTE, bfSprite, false);
+          butterflyActor.style.left = Math.round(bfX) + "px";
+          butterflyActor.style.top = Math.round(bfY) + "px";
+
+          if (LOCKED_MODE === "auto" && (modeTimer <= 0 || bfY < -50)) {
+            butterflyActor.style.display = "none";
+            mode = "sit";
+            modeTimer = 140;
+          }
+        } else if (mode === "ball") {
+          modeTimer--;
+          ballFloorY = y + HEIGHT - (14 * SCALE) - (3 * SCALE);
+          ballX += ballVx;
+          ballY += ballVy;
+          ballVy += 0.55;
+          if (ballY >= ballFloorY) {
+            ballY = ballFloorY;
+            ballVy = -Math.abs(ballVy) * 0.75;
+            ballVx *= 0.94;
+            if (Math.abs(ballVy) < 1.2) ballVy = 0;
+          }
+          if (ballX < EDGE_PAD + 12) {
+            ballX = EDGE_PAD + 12;
+            ballVx = Math.abs(ballVx);
+          } else if (ballX > window.innerWidth - (14 * SCALE) - EDGE_PAD - 12) {
+            ballX = window.innerWidth - (14 * SCALE) - EDGE_PAD - 12;
+            ballVx = -Math.abs(ballVx);
+          }
+
+          const bx = (ballX - Math.round(WIDTH * 0.35)) - x;
+          const by = (ROAM === "full" ? y : bottomY()) - y;
+          const bDist = Math.hypot(bx, by);
+          if (bDist > 6) {
+            x += (bx / bDist) * 2.4 * SPEED_MULT;
+            y += (by / bDist) * 1.4 * SPEED_MULT;
+            if (Math.abs(bx) > 0.2) facingRight = bx > 0;
+          }
+
+          const noseX = facingRight ? x + Math.round(WIDTH * 0.8) : x + Math.round(WIDTH * 0.12);
+          const noseY = y + Math.round(HEIGHT * 0.48);
+          const hitDist = Math.hypot((ballX + 7 * SCALE) - noseX, (ballY + 7 * SCALE) - noseY);
+          if (hitDist < Math.round(WIDTH * 0.36) && (ballBoopsLeft > 0 || LOCKED_MODE === "ball")) {
+            if (LOCKED_MODE === "auto") ballBoopsLeft--;
+            const kickDir = x < window.innerWidth * 0.25 ? 1 : (x > window.innerWidth * 0.75 ? -1 : (facingRight ? 1 : -1));
+            ballVx = kickDir * (3.6 + Math.random() * 2.2) * SPEED_MULT;
+            ballVy = -7.8 - Math.random() * 2.2;
+            jumpVy = -5.2;
+            const ballQuips = ["⚽ Boop!", "★ Dribble!", "♥ Goal!", "⚡ Bounce!"];
+            showFoxBubble(ballQuips[Math.floor(Math.random() * ballQuips.length)]);
+          }
+
+          const bSprite = Math.floor(frameTick / 6) % 2 === 0 ? BALL_1 : BALL_2;
+          drawSprite(ballCtx, FOX_PALETTE, bSprite, false);
+          ballActor.style.left = Math.round(ballX) + "px";
+          ballActor.style.top = Math.round(ballY) + "px";
+
+          if (LOCKED_MODE === "auto" && (modeTimer <= 0 || (ballBoopsLeft <= 0 && Math.abs(ballVx) < 0.6))) {
+            ballActor.style.display = "none";
+            mode = "sit";
+            modeTimer = 140;
+          }
+        } else if (mode === "dance") {
+          modeTimer--;
+          if (frameTick % 14 === 0 && jumpY === 0) jumpVy = -4.0;
+          if (frameTick % 28 === 0) facingRight = !facingRight;
+          if (frameTick % 65 === 0) {
+            const notes = ["♪ ♫ *boogie* ♫ ♪", "💃 Happy dance!", "★ Groove! ♪", "♫ Cha-cha! ♪"];
+            showFoxBubble(notes[Math.floor(Math.random() * notes.length)]);
+          }
+          if (LOCKED_MODE === "auto" && modeTimer <= 0) {
+            mode = ROAM === "fixed" ? "sit" : "walk";
+            modeTimer = 200;
+            pickDestination();
+          }
         } else if (mode === "walk" || mode === "jump") {
           modeTimer--;
           const dx = targetX - x;
@@ -942,9 +1328,7 @@
               modeTimer = 240;
               pickDestination();
             } else {
-              mode = Math.random() < 0.32 ? "sleep" : "sit";
-              modeTimer = mode === "sleep" ? 280 + Math.random() * 220 : 120 + Math.random() * 140;
-              if (mode === "sleep") showFoxBubble("Zzz...", 2200);
+              pickNextActivity();
             }
           } else {
             const baseSpeed = (mode === "jump" ? 3.5 : 1.45) * SPEED_MULT;
@@ -958,16 +1342,12 @@
           if (LOCKED_MODE === "auto") {
             modeTimer--;
             if (modeTimer <= 0) {
-              if (Math.random() < 0.28) {
-                mode = "sleep";
-                modeTimer = 320 + Math.random() * 180;
-                showFoxBubble("Zzz...", 2200);
-              } else if (ROAM !== "fixed") {
-                mode = "walk";
-                modeTimer = 240;
-                pickDestination();
+              if (Math.random() < 0.55) {
+                pickNextActivity();
               } else {
-                modeTimer = 200;
+                mode = "walk";
+                modeTimer = 220;
+                pickDestination();
               }
             }
           }
@@ -984,9 +1364,11 @@
         }
 
         let sprite = SIT_1;
-        if (jumpY < -1) {
+        if (jumpY < -1 && mode !== "dance") {
           sprite = JUMP_1;
-        } else if (mode === "walk") {
+        } else if (mode === "dance") {
+          sprite = Math.floor(frameTick / 9) % 2 === 0 ? DANCE_1 : DANCE_2;
+        } else if (mode === "walk" || mode === "butterfly" || mode === "ball") {
           const cycle = Math.floor(frameTick / 7) % 4;
           sprite = [WALK_1, WALK_2, WALK_3, WALK_2][cycle];
         } else if (mode === "sit") {
