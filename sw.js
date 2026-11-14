@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pocket-companions-v5';
+const CACHE_NAME = 'pocket-companions-v6';
 const ASSETS = [
   './chromebook-pet.html',
   './stream-fox.html',

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pocket Companions \u2014 Chromebook Screen Pet",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A pixel-art chibi fox that roams across your Chromebook screen, chasing butterflies and balls!",
   "icons": {
     "128": "icon-128.png"

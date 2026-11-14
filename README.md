@@ -64,6 +64,7 @@ Customize `stream-fox.html` per scene without editing code:
 | `style` | `sprite` | `sprite` (Pixel Fox sprite sheet), `3d` (plushie), or `pixel` (classic 16-bit) |
 | `roam` | `bottom` | `bottom` (walks along bottom edge), `full` (2D roam), `fixed` (centered in place) |
 | `mode` | `auto` | `auto` (walk/sit/sleep/hop/play), `sleep`, `sit`, `walk`, `dance`, `butterfly`, `ball` |
+| `picker` | `0` | `1` shows the companion/style menu (hidden by default; `C` toggles it, `S` cycles styles) |
 | `bubbles` | `1` | `1` (show `Zzz...` / `🦋 Oooh!` speech bubbles) or `0` (hide bubbles) |
 | `speed` | `1.0` | Movement speed multiplier (`0.2` – `5.0`) |
 | `padding` | `16` | Padding in pixels from the edges of the Browser Source |
