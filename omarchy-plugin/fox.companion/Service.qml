@@ -22,7 +22,7 @@ Item {
   readonly property int cellH: 160
   readonly property int foxW: Math.round(cellW * spriteScale)
   readonly property int foxH: Math.round(cellH * spriteScale)
-  readonly property var spriteAnims: ({"walk4": {"row": 0, "frames": 8, "fps": 10, "side": true}, "trot": {"row": 1, "frames": 6, "fps": 12, "side": true}, "stand_hop": {"row": 2, "frames": 8, "fps": 12, "side": true}, "stand_idle": {"row": 3, "frames": 4, "fps": 4, "side": true}, "sleep": {"row": 4, "frames": 8, "fps": 4, "side": true}, "idle": {"row": 5, "frames": 4, "fps": 4, "side": false}, "happy": {"row": 6, "frames": 4, "fps": 8, "side": false}, "surprised": {"row": 7, "frames": 4, "fps": 8, "side": false}, "sleepy": {"row": 8, "frames": 4, "fps": 3, "side": false}, "sad": {"row": 9, "frames": 4, "fps": 4, "side": false}, "angry": {"row": 10, "frames": 4, "fps": 12, "side": false}, "hop": {"row": 11, "frames": 6, "fps": 10, "side": false}})
+  readonly property var spriteAnims: ({"walk4": {"row": 0, "frames": 8, "fps": 10, "side": true}, "trot": {"row": 1, "frames": 6, "fps": 12, "side": true}, "stand_hop": {"row": 2, "frames": 8, "fps": 12, "side": true}, "stand_idle": {"row": 3, "frames": 4, "fps": 4, "side": true}, "sleep": {"row": 4, "frames": 8, "fps": 4, "side": true}, "idle": {"row": 5, "frames": 4, "fps": 4, "side": false}, "happy": {"row": 6, "frames": 4, "fps": 8, "side": false}, "surprised": {"row": 7, "frames": 4, "fps": 8, "side": false}, "sleepy": {"row": 8, "frames": 4, "fps": 3, "side": false}, "sad": {"row": 9, "frames": 4, "fps": 4, "side": false}, "angry": {"row": 10, "frames": 4, "fps": 12, "side": false}, "hop": {"row": 11, "frames": 6, "fps": 10, "side": false}, "sit_side": {"row": 12, "frames": 4, "fps": 4, "side": true}})
   property string currentSpecies: "fox"
   property int summonBearSignal: 0
   property string requestedActivity: ""
@@ -206,14 +206,14 @@ Item {
           window.butterflyVisible = false
           window.ballVisible = false
           window.mode = "dance"
-          window.modeTimer = 170
+          window.modeTimer = 210 + Math.floor(Math.random() * 60)
           window.showBubble("♪ ♫ *boogie* ♫ ♪")
         }
 
         function startButterflyChase() {
           window.ballVisible = false
           window.mode = "butterfly"
-          window.modeTimer = 260
+          window.modeTimer = 360 + Math.floor(Math.random() * 120)
           window.butterflyVisible = true
           var goRight = window.foxX < window.width * 0.5
           window.butterflyX = Math.max(60, Math.min(window.width - 80, window.foxX + (goRight ? 140 : -140)))
@@ -227,7 +227,7 @@ Item {
         function startBallPlay() {
           window.butterflyVisible = false
           window.mode = "ball"
-          window.modeTimer = 280
+          window.modeTimer = 420 + Math.floor(Math.random() * 120)
           window.ballVisible = true
           var dir = window.foxX < window.width * 0.5 ? 1 : -1
           window.ballX = window.foxX + root.foxW * 0.5 + dir * 90
@@ -235,26 +235,48 @@ Item {
           window.ballY = window.foxY - 50
           window.ballVx = dir * 3.8
           window.ballVy = -4.0
-          window.ballBoopsLeft = 4
+          window.ballBoopsLeft = 6
           window.showBubble("⚽ Playtime!")
         }
 
         function pickNextActivity() {
+          // calm-weighted: ~60% rest / sit / watch / nap, the rest play
           var r = Math.random()
-          if (r < 0.24) {
-            window.startButterflyChase()
-          } else if (r < 0.48) {
-            window.startBallPlay()
-          } else if (r < 0.68) {
-            window.startDance()
-          } else if (r < 0.84) {
+          if (r < 0.20) {
+            window.mode = "rest"                       // stand and look around
+            window.modeTimer = 90 + Math.floor(Math.random() * 90)
+          } else if (r < 0.34) {
+            window.mode = "walk"
+            window.modeTimer = 450
+            window.pickDestination()
+          } else if (r < 0.50) {
             window.mode = "sit"
-            window.modeTimer = 110 + Math.floor(Math.random() * 80)
+            window.modeTimer = 300 + Math.floor(Math.random() * 240)
+          } else if (r < 0.62) {
+            window.startButterflyWatch()
+          } else if (r < 0.73) {
+            window.startButterflyChase()
+          } else if (r < 0.84) {
+            window.startBallPlay()
+          } else if (r < 0.91) {
+            window.startDance()
           } else {
+            window.butterflyVisible = false
+            window.ballVisible = false
             window.mode = "sleep"
-            window.modeTimer = 210
+            window.modeTimer = 750 + Math.floor(Math.random() * 450)
             window.showBubble("Zzz...")
           }
+        }
+
+        function startButterflyWatch() {
+          // sit and watch the butterfly loop lazily around, then drift away
+          window.ballVisible = false
+          window.butterflyVisible = true
+          window.mode = "watch"
+          window.modeTimer = 300 + Math.floor(Math.random() * 150)
+          window.butterflyPhase = 0
+          window.showBubble("🦋 ...")
         }
 
         function startBearVisit() {
@@ -383,7 +405,7 @@ Item {
               if (window.modeTimer <= 0 || window.butterflyY < -40) {
                 window.butterflyVisible = false
                 window.mode = "sit"
-                window.modeTimer = 90
+                window.modeTimer = 180 + Math.floor(Math.random() * 120)
               }
             } else if (window.mode === "ball") {
               window.ballX += window.ballVx
@@ -437,7 +459,7 @@ Item {
               if (window.modeTimer <= 0 || (window.ballBoopsLeft <= 0 && Math.abs(window.ballVx) < 0.8)) {
                 window.ballVisible = false
                 window.mode = "sit"
-                window.modeTimer = 90
+                window.modeTimer = 180 + Math.floor(Math.random() * 120)
               }
             } else if (window.mode === "dance") {
               if (window.frameTick % 10 === 0 && window.jumpY === 0) {
@@ -470,24 +492,31 @@ Item {
                 if (Math.abs(vx) > 0.1) window.facingRight = vx > 0
               }
             } else if (window.mode === "sit") {
-              if (window.modeTimer <= 0) {
-                var sr = Math.random()
-                if (sr < 0.22) {
-                  window.startDance()
-                } else if (sr < 0.42) {
-                  window.startButterflyChase()
-                } else if (sr < 0.62) {
-                  window.startBallPlay()
-                } else if (sr < 0.78) {
-                  window.mode = "sleep"
-                  window.modeTimer = 200
-                  window.showBubble("Zzz...")
-                } else {
-                  window.mode = "walk"
-                  window.modeTimer = 160
-                  window.pickDestination()
-                }
+              if (window.modeTimer <= 0) window.pickNextActivity()
+            } else if (window.mode === "watch") {
+              window.butterflyPhase++
+              var wt = window.butterflyPhase * 0.04
+              window.butterflyX = window.foxX + root.foxW * 0.5 - 16 + Math.sin(wt) * root.foxW * 0.75
+              window.butterflyY = window.foxY + root.foxH * 0.12 + Math.sin(wt * 2) * root.foxH * 0.12 - (window.modeTimer < 45 ? (45 - window.modeTimer) * 5 : 0)
+              var wrel = window.butterflyX + 16 - (window.foxX + root.foxW * 0.5)
+              if (Math.abs(wrel) > 12) window.facingRight = wrel > 0   // follow it with the head
+              var wbF = Math.floor(window.frameTick / 3) % 2 === 0 ? 1 : 2
+              window.currentButterflyFrame = wbF
+              window.currentButterflySprite = wbF === 1 ? root.butterfly1 : root.butterfly2
+              butterflyActor.x = Math.round(window.butterflyX)
+              butterflyActor.y = Math.round(window.butterflyY)
+              if (!root.use3D) butterflyCanvas.requestPaint()
+              if (window.frameTick % 150 === 0) {
+                var looks = ["🦋 ...", "✨ Pretty...", "♥ Hehe"]
+                window.showBubble(looks[Math.floor(Math.random() * looks.length)])
               }
+              if (window.modeTimer <= 0) {
+                window.butterflyVisible = false
+                window.mode = "sit"
+                window.modeTimer = 180 + Math.floor(Math.random() * 120)
+              }
+            } else if (window.mode === "rest") {
+              if (window.modeTimer <= 0) window.pickNextActivity()
             } else if (window.mode === "sleep") {
               if (window.frameTick % 60 === 0) window.showBubble("zZz...")
               if (window.modeTimer <= 0) {
@@ -506,7 +535,7 @@ Item {
             } else if (window.mode === "walk" || window.mode === "butterfly" || window.mode === "ball") {
               var c = Math.floor(window.frameTick / 4) % 4
               nextPose = ["walk1", "walk2", "walk3", "walk2"][c]
-            } else if (window.mode === "sit") {
+            } else if (window.mode === "sit" || window.mode === "watch" || window.mode === "rest") {
               var wag = Math.floor(window.frameTick / 12) % 2 === 0
               nextPose = wag ? "sit1" : "sit2"
             } else if (window.mode === "sleep") {
@@ -527,7 +556,7 @@ Item {
               anim = "stand_hop"   // hop frame follows the real jump velocity: rise, apex, fall
               sf = window.jumpVy < -5 ? 1 : (window.jumpVy < -1.5 ? 2 : (window.jumpVy < 1.5 ? 3 : (window.jumpVy < 4 ? 4 : 5)))
             } else {
-              var modeAnim = { walk: "walk4", jump: "walk4", butterfly: "trot", ball: "trot", dance: "happy", sit: "idle", sleep: "sleep" }
+              var modeAnim = { walk: "walk4", jump: "walk4", butterfly: "trot", ball: "trot", dance: "happy", sit: "idle", sleep: "sleep", watch: "sit_side", rest: "stand_idle" }
               anim = modeAnim[window.mode] || "stand_idle"
             }
             if (sf < 0) sf = Math.floor(window.frameTick * root.spriteAnims[anim].fps / 30) % root.spriteAnims[anim].frames
@@ -886,7 +915,7 @@ Item {
                   window.butterflyVisible = false
                   window.ballVisible = false
                   window.mode = "sleep"
-                  window.modeTimer = 300
+                  window.modeTimer = 900
                   window.showBubble("Zzz...")
                 }
               } else {
