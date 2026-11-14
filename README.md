@@ -11,12 +11,36 @@ Self-contained, zero-dependency pixel-art companions for **OBS Studio / Streamla
 | `stream-fox.html` | Stream overlay (transparent background, URL parameters below) |
 | `chromebook-pet.html` | Installable desk pet (PWA) with kid-friendly buttons and an always-on-top window |
 | `chrome-extension/` | Chrome extension that lets the fox roam over any web page (`chromebook-extension.zip`) |
+| `omarchy-plugin/fox.companion/` | Omarchy desktop pet (Quickshell plugin): the fox roams your Linux desktop |
 
 ### The Pixel Fox
 A pixel-art chibi red fox drawn from a sprite sheet (`assets/fox-sprites.png`, embedded in each app so everything stays single-file):
 - **Walks** on all fours with a 4-legged gait, **trots** after the butterfly and ball, and **hops** with a crouch, tuck and landing squash.
 - **Sits** facing the camera, **dances** with a happy face, and **naps** curled up with breathing, ear flicks and floating z's.
 - Press `S` (or use the style menu) to cycle **Pixel Fox → 3D Plushie → 16-bit Pixel** styles. Add `?style=3d` or `?style=pixel` to a URL to pick one.
+
+### Omarchy Desktop Pet (`omarchy-plugin/fox.companion/`)
+The same fox as an Omarchy shell plugin. Install by linking it into your plugins folder:
+
+```bash
+ln -s "$PWD/omarchy-plugin/fox.companion" ~/.config/omarchy/plugins/fox.companion
+omarchy-restart-shell
+```
+
+- **Super+Z** toggles the fox; **Super+Shift+Z** restarts the shell (needed after editing the plugin: the shell caches the QML).
+- Click: butterfly → ball → dance → hop. Right-click: nap / wake. Shift+click (or the 🐾 badge): style menu.
+- IPC: `omarchy-shell fox.companion toggle | toggle3D | dance | playBall | chaseButterfly | setStyle sprite|3d|pixel`.
+
+### Updating the fox everywhere
+All copies share one sprite sheet. After regenerating it with `fox3d/scripts/web_atlas.py`:
+
+```bash
+python3 tools/sync-fox-sprites.py fox_web_atlas.png fox_web_atlas.json --foxden ../foxden
+```
+
+That rewrites the embedded sheet in `stream-fox.html`, `chromebook-pet.html` and the extension (and its zip),
+the plugin's `fox-sprites.png` + animation table, and foxden's `public/pixel-fox.js`. Then bump `CACHE_NAME`
+in `sw.js` (so installed desk pets update) and press Super+Shift+Z to reload the desktop pet.
 
 ---
 

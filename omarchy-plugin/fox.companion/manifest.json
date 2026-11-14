@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "fox.companion",
+  "name": "Fox Desktop Companion",
+  "version": "1.1.0",
+  "author": "Fox",
+  "description": "Pixel-art chibi fox companion that roams the desktop, chases butterflies and balls, hops, dances and naps",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}
