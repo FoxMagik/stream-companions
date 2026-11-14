@@ -22,7 +22,8 @@ Item {
   readonly property int cellH: 160
   readonly property int foxW: Math.round(cellW * spriteScale)
   readonly property int foxH: Math.round(cellH * spriteScale)
-  readonly property var spriteAnims: ({"walk4": {"row": 0, "frames": 8, "fps": 10, "side": true}, "trot": {"row": 1, "frames": 6, "fps": 12, "side": true}, "stand_hop": {"row": 2, "frames": 8, "fps": 12, "side": true}, "stand_idle": {"row": 3, "frames": 4, "fps": 4, "side": true}, "sleep": {"row": 4, "frames": 8, "fps": 4, "side": true}, "idle": {"row": 5, "frames": 4, "fps": 4, "side": false}, "happy": {"row": 6, "frames": 4, "fps": 8, "side": false}, "surprised": {"row": 7, "frames": 4, "fps": 8, "side": false}, "sleepy": {"row": 8, "frames": 4, "fps": 3, "side": false}, "sad": {"row": 9, "frames": 4, "fps": 4, "side": false}, "angry": {"row": 10, "frames": 4, "fps": 12, "side": false}, "hop": {"row": 11, "frames": 6, "fps": 10, "side": false}, "sit_side": {"row": 12, "frames": 4, "fps": 4, "side": true}})
+  readonly property var spriteProps: ({"butterfly": [[0, 2240, 30, 26], [32, 2240, 30, 26], [64, 2240, 30, 26], [96, 2240, 30, 26]], "ball": [[128, 2240, 26, 26], [156, 2240, 26, 26], [184, 2240, 26, 26], [212, 2240, 26, 26]]})
+  readonly property var spriteAnims: ({"walk4": {"row": 0, "frames": 8, "fps": 10, "side": true}, "trot": {"row": 1, "frames": 6, "fps": 12, "side": true}, "stand_hop": {"row": 2, "frames": 8, "fps": 12, "side": true}, "stand_idle": {"row": 3, "frames": 4, "fps": 4, "side": true}, "sleep": {"row": 4, "frames": 8, "fps": 4, "side": true, "rowR": 13}, "idle": {"row": 5, "frames": 4, "fps": 4, "side": false}, "happy": {"row": 6, "frames": 4, "fps": 8, "side": false}, "surprised": {"row": 7, "frames": 4, "fps": 8, "side": false}, "sleepy": {"row": 8, "frames": 4, "fps": 3, "side": false}, "sad": {"row": 9, "frames": 4, "fps": 4, "side": false}, "angry": {"row": 10, "frames": 4, "fps": 12, "side": false}, "hop": {"row": 11, "frames": 6, "fps": 10, "side": false}, "sit_side": {"row": 12, "frames": 4, "fps": 4, "side": true}})
   property string currentSpecies: "fox"
   property int summonBearSignal: 0
   property string requestedActivity: ""
@@ -135,6 +136,8 @@ Item {
         property string foxEmote: ""
         property int foxEmoteUntil: 0
         readonly property var spriteInfo: root.spriteAnims[window.spriteAnim] || root.spriteAnims["idle"]
+        // pre-mirrored right-facing row (keeps the sleep z's readable) instead of flipping
+        readonly property bool spriteUseR: window.spriteInfo.side && window.facingRight && window.spriteInfo.rowR !== undefined
         property string bubbleText: ""
 
         // Butterfly State
@@ -670,10 +673,26 @@ Item {
             source: Qt.resolvedUrl("sprites3d/butterfly" + window.currentButterflyFrame + ".png")
           }
 
+          // new pixel-art butterfly (Sprite style)
+          Item {
+            anchors.fill: parent
+            visible: root.foxStyle === "sprite"
+            clip: true
+            readonly property var fr: root.spriteProps.butterfly[((Math.floor(window.frameTick / (window.mode === "watch" ? 3 : 2))) % root.spriteProps.butterfly.length + root.spriteProps.butterfly.length) % root.spriteProps.butterfly.length]
+            Image {
+              source: Qt.resolvedUrl("fox-sprites.png")
+              smooth: false
+              x: Math.round((parent.width - parent.fr[2] * root.spriteScale) / 2) - parent.fr[0] * root.spriteScale
+              y: Math.round((parent.height - parent.fr[3] * root.spriteScale) / 2) - parent.fr[1] * root.spriteScale
+              width: sourceSize.width * root.spriteScale
+              height: sourceSize.height * root.spriteScale
+            }
+          }
+
           Canvas {
             id: butterflyCanvas
             anchors.fill: parent
-            visible: !root.use3D
+            visible: root.foxStyle === "pixel"
             smooth: false
             onPaint: {
               var ctx = getContext("2d")
@@ -713,10 +732,26 @@ Item {
             source: Qt.resolvedUrl("sprites3d/ball" + window.currentBallFrame + ".png")
           }
 
+          // new pixel-art ball (Sprite style)
+          Item {
+            anchors.fill: parent
+            visible: root.foxStyle === "sprite"
+            clip: true
+            readonly property var fr: root.spriteProps.ball[((Math.floor(window.ballX / (6 * root.spriteScale))) % root.spriteProps.ball.length + root.spriteProps.ball.length) % root.spriteProps.ball.length]
+            Image {
+              source: Qt.resolvedUrl("fox-sprites.png")
+              smooth: false
+              x: Math.round((parent.width - parent.fr[2] * root.spriteScale) / 2) - parent.fr[0] * root.spriteScale
+              y: Math.round((parent.height - parent.fr[3] * root.spriteScale) / 2) - parent.fr[1] * root.spriteScale
+              width: sourceSize.width * root.spriteScale
+              height: sourceSize.height * root.spriteScale
+            }
+          }
+
           Canvas {
             id: ballCanvas
             anchors.fill: parent
-            visible: !root.use3D
+            visible: root.foxStyle === "pixel"
             smooth: false
             onPaint: {
               var ctx = getContext("2d")
@@ -876,13 +911,13 @@ Item {
             clip: true
             transform: Scale {
               origin.x: spriteView.width / 2
-              xScale: (window.spriteInfo.side && window.facingRight) ? -1 : 1
+              xScale: (window.spriteInfo.side && window.facingRight && !window.spriteUseR) ? -1 : 1
             }
             Image {
               source: Qt.resolvedUrl("fox-sprites.png")
               smooth: false
               x: -window.spriteFrame * root.cellW * root.spriteScale
-              y: -window.spriteInfo.row * root.cellH * root.spriteScale
+              y: -(window.spriteUseR ? window.spriteInfo.rowR : window.spriteInfo.row) * root.cellH * root.spriteScale
               width: sourceSize.width * root.spriteScale
               height: sourceSize.height * root.spriteScale
             }
