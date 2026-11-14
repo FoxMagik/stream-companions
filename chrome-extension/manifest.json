@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Pocket Companions \u2014 Chromebook Screen Pet",
-  "version": "1.0.0",
-  "description": "Adorable 16-bit Chibi Foxes, Cats, Chillet & Bear Friend that roam across your Chromebook screen!",
+  "version": "1.1.0",
+  "description": "A pixel-art chibi fox that roams across your Chromebook screen, chasing butterflies and balls!",
   "icons": {
     "128": "icon-128.png"
   },
